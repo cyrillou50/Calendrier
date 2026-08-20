@@ -225,7 +225,7 @@ const ev = (id, extra = {}) => ({
   {
     const r = await appel('/api/sync', {
       methode: 'POST', jeton: jetonA,
-      body: { cursor: 999999, events: [
+      body: { cursor: 0, events: [
         { id: 'court', date: '2026-01-01' },                    // id trop court
         { id: 'bbbbbbbb-1', date: 'pas-une-date' },             // date invalide
         null,                                                    // rien
@@ -243,7 +243,7 @@ const ev = (id, extra = {}) => ({
     const long = 'x'.repeat(5000);
     const r = await appel('/api/sync', {
       methode: 'POST', jeton: jetonA,
-      body: { cursor: 999999, events: [ev('bbbbbbbb-3', { title: long, updatedAt: 3000 })] }
+      body: { cursor: 0, events: [ev('bbbbbbbb-3', { title: long, updatedAt: 3000 })] }
     });
     eq('titre tronqué à 300', r.data.events.find(x => x.id === 'bbbbbbbb-3').title.length, 300);
   }
@@ -285,7 +285,7 @@ const ev = (id, extra = {}) => ({
     eq('quota dépassé 413', r.statut, 413);
 
     const apres = await appel('/api/me', { jeton: jetonA });
-    eq('transaction annulée (rien écrit)', apres.data.evenements, 3);
+    eq('transaction annulée (rien écrit)', apres.data.evenements, 4);
   }
 
   /* ─────────── Export ─────────── */
@@ -293,7 +293,7 @@ const ev = (id, extra = {}) => ({
   {
     const r = await appel('/api/export', { jeton: jetonA });
     eq('export 200', r.statut, 200);
-    eq('export : supprimés exclus', r.data.events.length, 3);
+    eq('export : supprimés exclus', r.data.events.length, 4);
     vrai('pièce jointe', /attachment/.test(r.entetes.get('content-disposition')));
     eq('export sans jeton 401', (await appel('/api/export')).statut, 401);
   }

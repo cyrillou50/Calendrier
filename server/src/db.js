@@ -7,7 +7,18 @@
 
 const path = require('path');
 const fs = require('fs');
-const { DatabaseSync } = require('node:sqlite');
+let DatabaseSync;
+try {
+  ({ DatabaseSync } = require('node:sqlite'));
+} catch {
+  console.error(
+    `\n✖ Le module « node:sqlite » est indisponible avec Node ${process.versions.node}.\n` +
+    '  Cette API nécessite Node.js 24 ou plus récent (aucune autre dépendance).\n' +
+    '  Installation :  curl -fsSL https://deb.nodesource.com/setup_24.x | sudo bash - \\\n' +
+    '                  && sudo apt-get install -y nodejs\n'
+  );
+  process.exit(1);
+}
 
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
 fs.mkdirSync(DATA_DIR, { recursive: true });
