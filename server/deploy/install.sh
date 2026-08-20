@@ -12,6 +12,8 @@ set -euo pipefail
 
 DOMAINE="${1:-}"
 ORIGINE="${2:-}"
+PORT_IMPOSE="${3:-}"            # port explicite, optionnel
+PORT="${PORT_IMPOSE:-8787}"     # sinon 8787, ou le premier port libre au-dessus
 RACINE="/opt/calendrier"
 UTILISATEUR="calendrier"
 
@@ -22,14 +24,15 @@ titre() { printf '\n\033[1;35m▸ %s\033[0m\n' "$*"; }
 [[ $EUID -eq 0 ]] || { rouge "Ce script doit être lancé avec sudo."; exit 1; }
 
 if [[ -z "$DOMAINE" || -z "$ORIGINE" ]]; then
-  rouge "Usage : sudo bash install.sh <domaine-api> <origine-github-pages>"
+  rouge "Usage : sudo bash install.sh <domaine-api> <origine-github-pages> [port]"
   echo   "Exemple : sudo bash install.sh api.mondomaine.fr https://cyril.github.io"
+  echo   "Le port est facultatif : 8787 par défaut, ou le premier libre s'il est pris."
   exit 1
 fi
 
 titre "1/8 · Paquets système"
 apt-get update -qq
-apt-get install -y -qq curl ca-certificates gnupg nginx ufw sqlite3 >/dev/null
+apt-get install -y -qq curl ca-certificates gnupg nginx ufw sqlite3 iproute2 procps >/dev/null
 vert "  nginx, sqlite3 et outils installés"
 
 titre "2/8 · Node.js 24"
@@ -61,20 +64,63 @@ if [[ "$SRC" != "$RACINE/server" ]]; then
 fi
 vert "  sources déployées dans $RACINE/server"
 
-titre "4/8 · Fichier .env"
-if [[ -f "$RACINE/server/.env" ]]; then
-  vert "  .env existant conservé"
-else
+titre "4/8 · Port d'écoute et fichier .env"
+
+# Une installation précédente peut avoir laissé un service en boucle
+# de redémarrage, ou un processus orphelin qui retient le port.
+systemctl stop calendrier-api        2>/dev/null || true
+systemctl reset-failed calendrier-api 2>/dev/null || true
+if pgrep -f "node .*$RACINE.*src/server.js" >/dev/null 2>&1; then
+  pkill -f "node .*$RACINE.*src/server.js" 2>/dev/null || true
+  sleep 1
+  vert "  processus orphelin de l'API arrêté"
+fi
+
+occupe() { ss -tlnH "sport = :$1" 2>/dev/null | grep -q . ; }
+qui()    { ss -tlnpH "sport = :$1" 2>/dev/null | grep -oP 'users:\(\("\K[^"]+' | head -1; }
+
+if occupe "$PORT"; then
+  VOLEUR="$(qui "$PORT")"
+  if [[ -n "$PORT_IMPOSE" ]]; then
+    rouge "  Le port $PORT est déjà utilisé par « ${VOLEUR:-processus inconnu} »."
+    rouge "  Choisis-en un autre, ou libère celui-ci."
+    exit 1
+  fi
+  vert "  port $PORT déjà pris par « ${VOLEUR:-processus inconnu} » — recherche d'un port libre"
+  TROUVE=""
+  for p in $(seq 8788 8850); do
+    occupe "$p" || { TROUVE="$p"; break; }
+  done
+  [[ -n "$TROUVE" ]] || { rouge "  Aucun port libre entre 8788 et 8850."; exit 1; }
+  PORT="$TROUVE"
+fi
+vert "  l'API écoutera sur 127.0.0.1:$PORT"
+
+if [[ ! -f "$RACINE/server/.env" ]]; then
   cat > "$RACINE/server/.env" <<EOF
-PORT=8787
+PORT=$PORT
 HOST=127.0.0.1
 ALLOWED_ORIGINS=${ORIGINE%/}
 ALLOW_REGISTRATION=true
 DATA_DIR=$RACINE/server/data
 MAX_EVENTS_PER_USER=20000
 EOF
-  vert "  .env créé — origine autorisée : ${ORIGINE%/}"
+  vert "  .env créé"
+else
+  # On conserve les réglages personnalisés, mais le port et l'origine
+  # doivent rester cohérents avec ce que le script installe.
+  regler() {
+    grep -q "^$1=" "$RACINE/server/.env" \
+      && sed -i "s|^$1=.*|$1=$2|" "$RACINE/server/.env" \
+      || echo "$1=$2" >> "$RACINE/server/.env"
+  }
+  regler PORT "$PORT"
+  regler HOST 127.0.0.1
+  regler ALLOWED_ORIGINS "${ORIGINE%/}"
+  regler DATA_DIR "$RACINE/server/data"
+  vert "  .env existant mis à jour"
 fi
+vert "  origine autorisée : ${ORIGINE%/}"
 chown -R "$UTILISATEUR:$UTILISATEUR" "$RACINE" /var/backups/calendrier
 chmod 600 "$RACINE/server/.env"
 
@@ -91,17 +137,23 @@ titre "6/8 · Service systemd"
 sed "s|/opt/calendrier|$RACINE|g" "$RACINE/server/deploy/calendrier-api.service" \
   > /etc/systemd/system/calendrier-api.service
 systemctl daemon-reload
-systemctl enable --now calendrier-api
+systemctl enable calendrier-api >/dev/null 2>&1
+systemctl restart calendrier-api
 sleep 2
-if systemctl is-active --quiet calendrier-api; then
-  vert "  service actif sur 127.0.0.1:8787"
+
+# On vérifie que l'API répond vraiment, pas seulement que systemd est content
+if systemctl is-active --quiet calendrier-api \
+   && curl -fsS --max-time 5 "http://127.0.0.1:$PORT/api/health" >/dev/null; then
+  vert "  service actif et répond sur 127.0.0.1:$PORT"
 else
-  rouge "  le service n'a pas démarré :"; journalctl -u calendrier-api -n 30 --no-pager; exit 1
+  rouge "  le service n'a pas démarré correctement :"
+  journalctl -u calendrier-api -n 25 --no-pager
+  exit 1
 fi
 
 titre "7/8 · Nginx + certificat HTTPS"
-sed "s|api.mondomaine.fr|$DOMAINE|g" "$RACINE/server/deploy/nginx.conf" \
-  > /etc/nginx/sites-available/calendrier-api
+sed -e "s|api.mondomaine.fr|$DOMAINE|g" -e "s|127.0.0.1:8787|127.0.0.1:$PORT|g" \
+  "$RACINE/server/deploy/nginx.conf" > /etc/nginx/sites-available/calendrier-api
 ln -sf /etc/nginx/sites-available/calendrier-api /etc/nginx/sites-enabled/calendrier-api
 
 # Tant que le certificat n'existe pas, le bloc 443 empêcherait nginx de démarrer :
@@ -124,10 +176,18 @@ fi
 nginx -t && systemctl reload nginx
 
 titre "8/8 · Pare-feu et sauvegardes"
-ufw allow OpenSSH        >/dev/null 2>&1 || true
-ufw allow 'Nginx Full'   >/dev/null 2>&1 || true
-yes | ufw enable         >/dev/null 2>&1 || true
-vert "  ports 22, 80 et 443 ouverts"
+# On n'active JAMAIS ufw nous-mêmes : sur un serveur qui héberge déjà
+# d'autres services, l'activer couperait tout ce qui n'est pas
+# explicitement autorisé ici. On se contente d'ouvrir ce dont on a besoin
+# si le pare-feu est déjà en service.
+if ufw status 2>/dev/null | grep -q '^Status: active'; then
+  ufw allow OpenSSH      >/dev/null 2>&1 || true
+  ufw allow 'Nginx Full' >/dev/null 2>&1 || true
+  vert "  ufw actif : ports 22, 80 et 443 autorisés"
+else
+  vert "  ufw inactif — laissé tel quel (tes autres services ne sont pas touchés)"
+  vert "  vérifie que les ports 80 et 443 sont ouverts chez ton hébergeur"
+fi
 
 install -m 755 "$RACINE/server/scripts/backup.sh" /usr/local/bin/calendrier-backup
 cat > /etc/cron.d/calendrier-backup <<'EOF'
@@ -144,6 +204,7 @@ echo
 echo "  API      : https://$DOMAINE/api/health"
 echo "  Origine  : ${ORIGINE%/}"
 echo "  Base     : $RACINE/server/data/calendrier.db"
+  echo "  Port     : 127.0.0.1:$PORT"
 echo
 echo "  Vérifie  :  curl https://$DOMAINE/api/health"
 echo "  Journaux :  journalctl -u calendrier-api -f"
