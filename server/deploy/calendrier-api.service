@@ -1,0 +1,53 @@
+# ═══════════════════════════════════════════════════════════
+# Service systemd — API Calendrier
+# Installation :
+#   sudo cp calendrier-api.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now calendrier-api
+# Journaux :
+#   sudo journalctl -u calendrier-api -f
+# ═══════════════════════════════════════════════════════════
+
+[Unit]
+Description=API Calendrier (Node + SQLite)
+Documentation=https://github.com/TON-PSEUDO/calendrier
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=calendrier
+Group=calendrier
+WorkingDirectory=/opt/calendrier/server
+Environment=NODE_ENV=production
+EnvironmentFile=/opt/calendrier/server/.env
+ExecStart=/usr/bin/node src/server.js
+
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=calendrier-api
+
+# ── Durcissement ──
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=false
+# Seuls ces dossiers restent accessibles en écriture
+ReadWritePaths=/opt/calendrier/server/data /var/backups/calendrier
+
+# ── Limites ──
+LimitNOFILE=8192
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target

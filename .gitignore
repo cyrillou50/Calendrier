@@ -1,0 +1,24 @@
+# Dépendances
+node_modules/
+
+# Secrets et données — ne JAMAIS committer
+server/.env
+server/data/
+*.db
+*.db-wal
+*.db-shm
+*.db.gz
+
+# Système
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Éditeurs
+.vscode/
+.idea/
+*.swp
+
+# Journaux
+*.log
+npm-debug.log*

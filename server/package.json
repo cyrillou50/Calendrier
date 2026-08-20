@@ -1,0 +1,17 @@
+{
+  "name": "calendrier-api",
+  "version": "1.0.0",
+  "private": true,
+  "description": "API de sauvegarde et de synchronisation du calendrier — Node + SQLite, zéro dépendance",
+  "type": "commonjs",
+  "main": "src/server.js",
+  "engines": {
+    "node": ">=22.5"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node test/e2e.js"
+  },
+  "dependencies": {}
+}
