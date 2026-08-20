@@ -152,16 +152,30 @@ else
 fi
 
 titre "7/8 · Nginx + certificat HTTPS"
-sed -e "s|api.mondomaine.fr|$DOMAINE|g" -e "s|127.0.0.1:8787|127.0.0.1:$PORT|g" \
-  "$RACINE/server/deploy/nginx.conf" > /etc/nginx/sites-available/calendrier-api
-ln -sf /etc/nginx/sites-available/calendrier-api /etc/nginx/sites-enabled/calendrier-api
+CONF=/etc/nginx/sites-available/calendrier-api
 
-# Tant que le certificat n'existe pas, le bloc 443 empêcherait nginx de démarrer :
-# on le neutralise, certbot le rétablira.
-awk '/listen 443 ssl;/{ssl=1} ssl{print "#" $0; next} {print}' \
-  /etc/nginx/sites-available/calendrier-api > /tmp/nginx-calendrier.tmp
-mv /tmp/nginx-calendrier.tmp /etc/nginx/sites-available/calendrier-api
-nginx -t && systemctl reload nginx
+if [[ -f "$CONF" ]] && grep -q 'ssl_certificate' "$CONF"; then
+  # certbot a déjà configuré le TLS ici : on ne réécrit pas sa configuration,
+  # on se contente de remettre le bon port de l'API.
+  sed -i -E "s|proxy_pass http://127\.0\.0\.1:[0-9]+;|proxy_pass http://127.0.0.1:$PORT;|g" "$CONF"
+  vert "  configuration HTTPS existante conservée (port réaligné sur $PORT)"
+else
+  # Modèle HTTP uniquement : c'est certbot qui ajoutera le bloc 443,
+  # les certificats et la redirection.
+  sed -e "s|api.mondomaine.fr|$DOMAINE|g" -e "s|127.0.0.1:8787|127.0.0.1:$PORT|g" \
+    "$RACINE/server/deploy/nginx.conf" > "$CONF"
+  vert "  configuration HTTP écrite (certbot ajoutera le HTTPS)"
+fi
+
+ln -sf "$CONF" /etc/nginx/sites-enabled/calendrier-api
+
+if ! nginx -t 2>/tmp/nginx-test.log; then
+  rouge "  configuration nginx invalide :"; cat /tmp/nginx-test.log
+  rouge "  les autres sites de ce serveur ne sont pas affectés tant que nginx n'est pas rechargé."
+  rm -f /etc/nginx/sites-enabled/calendrier-api
+  exit 1
+fi
+systemctl reload nginx
 
 command -v certbot >/dev/null || apt-get install -y -qq certbot python3-certbot-nginx >/dev/null
 
