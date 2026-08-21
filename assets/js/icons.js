@@ -11,6 +11,7 @@
     'check':   '<path d="M4.5 12.5l5 5 10-11"/>',
     'chev-l':  '<path d="M15 5l-7 7 7 7"/>',
     'chev-r':  '<path d="M9 5l7 7-7 7"/>',
+    'chev-d':  '<path d="M5 9l7 7 7-7"/>',
     'search':  '<circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21"/>',
     'menu':    '<path d="M4 7h16M4 12h16M4 17h16"/>',
     'moon':    '<path d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5a8.5 8.5 0 1 0 10.7 10.7z"/>',

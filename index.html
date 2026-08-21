@@ -101,10 +101,6 @@
       <button class="btn btn--ghost btn--block" data-action="offline">
         <i data-ico="device"></i> Utiliser sans compte (sur cet appareil)
       </button>
-      <p class="auth__server">
-        Serveur : <code data-server-label>non configuré</code>
-        <button class="linkish" data-action="server-config">modifier</button>
-      </p>
     </div>
   </div>
 </div>
@@ -150,6 +146,15 @@
       <button class="segmented__btn" data-view="agenda">Agenda</button>
     </div>
 
+    <div class="calmenu" data-calmenu hidden>
+      <button class="calmenu__btn" data-action="cal-menu" title="Changer de calendrier">
+        <i data-ico="users"></i>
+        <span data-cal-nom>Mon calendrier</span>
+        <i data-ico="chev-d" class="calmenu__fleche"></i>
+      </button>
+      <div class="calmenu__pop" data-calmenu-pop hidden></div>
+    </div>
+
     <button class="btn btn--primary btn--sm topbar__new" data-action="new-event"><i data-ico="plus"></i><span>Nouveau</span></button>
     <button class="icon-btn" data-action="theme" title="Thème"><i data-ico="moon"></i></button>
 
@@ -158,16 +163,6 @@
 
   <div class="layout">
     <aside class="sidebar" data-sidebar>
-      <div class="calpicker" data-calpicker hidden>
-        <label class="field">
-          <span class="field__label">Calendrier</span>
-          <span class="field__wrap"><i data-ico="users"></i>
-            <select id="calendrierActif"></select>
-          </span>
-        </label>
-        <p class="calpicker__role" data-cal-role hidden></p>
-      </div>
-
       <div class="minical" data-minical></div>
 
       <section class="side-block">
@@ -345,27 +340,6 @@
         <ul class="membres" data-membres></ul>
       </div>
 
-      <details class="avance">
-        <summary><i data-ico="server"></i> Réglages avancés — serveur</summary>
-        <div class="avance__corps">
-          <label class="field">
-            <span class="field__label">Adresse de l&rsquo;API (ton VPS)</span>
-            <span class="field__wrap"><i data-ico="server"></i>
-              <input type="url" id="serverUrl" placeholder="https://api.mondomaine.fr" autocomplete="off">
-            </span>
-          </label>
-          <p class="note"><i data-ico="info"></i> Doit être en <b>https://</b> — GitHub Pages bloque les appels non sécurisés.</p>
-          <p class="note"><i data-ico="server"></i>
-            <span>Origine de cette page : <code data-origine>—</code><br>
-            C&rsquo;est la valeur attendue par <b>ALLOWED_ORIGINS</b> sur le VPS.</span>
-          </p>
-          <div class="btnrow">
-            <button class="btn btn--soft btn--sm" data-action="test-server">Tester la connexion</button>
-            <button class="btn btn--soft btn--sm" data-action="save-server">Enregistrer</button>
-          </div>
-          <p class="form__error" data-server-msg hidden></p>
-        </div>
-      </details>
     </div>
     <footer class="modal__foot">
       <button class="btn btn--danger-ghost" data-action="logout" hidden><i data-ico="out"></i> Se déconnecter</button>

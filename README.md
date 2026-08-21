@@ -155,12 +155,16 @@ curl https://api.mondomaine.fr/api/health
 
 ## Étape 4 — Relier le site à ton VPS
 
-1. Ouvre ton site GitHub Pages
-2. Sur l'écran de connexion, clique sur **« modifier »** à côté de *Serveur*
-3. Saisis `https://api.mondomaine.fr`
-4. **Tester la connexion** → doit répondre *Connexion réussie*
-5. **Enregistrer**, ferme la fenêtre
-6. Onglet **Créer un compte** → renseigne tes informations
+L'adresse de l'API est inscrite dans le code, en tête de
+[`assets/js/api.js`](assets/js/api.js) :
+
+```js
+var SERVEUR_DEFAUT = 'https://api.mondomaine.fr';
+```
+
+Remplace cette ligne par ton domaine, pousse, et l'application s'y connecte
+sans que personne ait à saisir quoi que ce soit. Il ne reste qu'à ouvrir le
+site et à créer ton compte.
 
 Si tu utilisais le mode local, l'application te propose de récupérer tes événements
 existants. Accepte : ils sont rattachés à ton compte et sauvegardés sur le VPS.
@@ -222,16 +226,19 @@ réimportable. Utile avant une manipulation risquée.
 
 ## Partager son calendrier
 
-**Inviter quelqu'un** — avatar → *Compte & sauvegarde* → **Inviter quelqu'un**.
-Choisis le droit accordé, un code apparaît (`XXXX-XXXX`). Transmets-le.
+Tout se passe dans le **menu des calendriers**, dans la barre du haut. Il est
+toujours visible une fois connecté, même quand tu n'as qu'un seul calendrier.
 
-**Rejoindre** — la personne crée son compte, puis *Compte & sauvegarde* →
-**Rejoindre avec un code** et saisit le code.
+**Inviter quelqu'un** — menu → *Inviter quelqu'un sur le mien…* → choisis le
+droit accordé. Un code apparaît (`XXXX-XXXX`), transmets-le.
 
-Un sélecteur apparaît alors en haut de la barre latérale pour passer d'un
-calendrier à l'autre. Les modifications se synchronisent entre tous ceux qui y
-ont accès, avec la même règle de conflit que pour un calendrier personnel : la
-version la plus récente l'emporte.
+**Rejoindre** — la personne crée son compte, ouvre le même menu, choisit
+*Rejoindre avec un code…* et saisit ce que tu lui as envoyé.
+
+Le menu liste ensuite tous les calendriers accessibles : un clic suffit pour
+basculer de l'un à l'autre. Les modifications se synchronisent entre tous ceux
+qui y ont accès, avec la même règle de conflit que pour un calendrier
+personnel : la version la plus récente l'emporte.
 
 | | Lecture seule | Peut modifier | Propriétaire |
 |---|---|---|---|

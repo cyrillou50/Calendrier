@@ -42,7 +42,6 @@
     themeInit();
     Icons.render();
     Api.load();
-    majLibelleServeur();
     brancherGlobal();
     brancherActions();   // toutes les [data-action], y compris dans les modales
     brancherModales();   // les modales servent aussi depuis l'écran de connexion
@@ -72,7 +71,6 @@
     ecran.hidden = false;
     brancherAuth();
     Icons.render(ecran);
-    majLibelleServeur();
   }
 
   function ouvrirApp(cle, utilisateur) {
@@ -97,37 +95,76 @@
 
   /* ═════════════════ CALENDRIERS PARTAGÉS ═════════════════ */
 
-  /** Remplit le sélecteur de la barre latérale */
+  /** Met à jour le bouton de la barre du haut et le contenu du menu */
   function majCalendriers() {
-    var zone = document.querySelector('[data-calpicker]');
-    var select = document.getElementById('calendrierActif');
-    var role = document.querySelector('[data-cal-role]');
-    if (!zone || !select) return;
+    var menu = document.querySelector('[data-calmenu]');
+    var nom = document.querySelector('[data-cal-nom]');
+    if (!menu || !nom) return;
 
-    var liste = Api.calendriers || [];
-    // Inutile d'afficher un sélecteur pour un seul calendrier
-    zone.hidden = !Api.authed() || liste.length < 2;
-
-    var h = '';
-    for (var i = 0; i < liste.length; i++) {
-      var c = liste[i];
-      var nom = c.role === 'proprietaire' ? 'Mon calendrier' : 'Calendrier de ' + c.pseudo;
-      h += '<option value="' + UI.esc(c.id) + '"' +
-           (c.id === Api.calendrier ? ' selected' : '') + '>' + UI.esc(nom) + '</option>';
-    }
-    select.innerHTML = h;
+    // Toujours visible une fois connecté : c'est aussi le point d'entrée
+    // pour rejoindre un calendrier, même quand on n'en a qu'un.
+    menu.hidden = !Api.authed();
 
     var actuel = Api.calendrierActuel();
-    if (role) {
-      if (actuel && actuel.role !== 'proprietaire') {
-        role.hidden = false;
-        role.innerHTML = '<i data-ico="users"></i> Partagé par <b>' + UI.esc(actuel.pseudo) + '</b> · ' +
-                         (actuel.role === 'lecture' ? 'lecture seule' : 'modification autorisée');
-        Icons.render(role);
-      } else {
-        role.hidden = true;
-      }
+    nom.textContent = !actuel || actuel.role === 'proprietaire'
+      ? 'Mon calendrier'
+      : 'Calendrier de ' + actuel.pseudo;
+
+    rendreMenuCalendriers();
+  }
+
+  function rendreMenuCalendriers() {
+    var pop = document.querySelector('[data-calmenu-pop]');
+    if (!pop) return;
+
+    var liste = Api.calendriers || [];
+    var h = '<div class="calmenu__titre">Calendriers</div>';
+
+    for (var i = 0; i < liste.length; i++) {
+      var c = liste[i];
+      var moi = c.role === 'proprietaire';
+      var titre = moi ? 'Mon calendrier' : 'Calendrier de ' + c.pseudo;
+      var sousTitre = moi ? 'À toi'
+        : (c.role === 'lecture' ? 'Lecture seule' : 'Tu peux modifier');
+      var actif = c.id === Api.calendrier;
+
+      h += '<button class="calmenu__item' + (actif ? ' is-active' : '') + '" ' +
+             'data-action="cal-choisir" data-cal="' + UI.esc(c.id) + '">' +
+             '<span class="calmenu__av' + (moi ? ' calmenu__av--moi' : '') + '">' +
+               UI.esc(moi ? '★' : UI.initiales(c.pseudo)) + '</span>' +
+             '<span style="min-width:0">' +
+               '<span class="calmenu__n">' + UI.esc(titre) + '</span>' +
+               '<span class="calmenu__r">' + sousTitre + '</span>' +
+             '</span>' +
+             (actif ? '<i class="calmenu__check" data-ico="check"></i>' : '') +
+           '</button>';
     }
+
+    h += '<div class="calmenu__sep"></div>' +
+         '<button class="calmenu__item calmenu__item--action" data-action="rejoindre">' +
+           '<i data-ico="plus"></i> Rejoindre avec un code…</button>' +
+         '<button class="calmenu__item calmenu__item--action" data-action="inviter">' +
+           '<i data-ico="users"></i> Inviter quelqu’un sur le mien…</button>';
+
+    pop.innerHTML = h;
+    Icons.render(pop);
+  }
+
+  function ouvrirMenuCalendriers() {
+    var menu = document.querySelector('[data-calmenu]');
+    var pop = document.querySelector('[data-calmenu-pop]');
+    if (!menu || !pop) return;
+    var ouvert = pop.hidden;
+    if (ouvert) rendreMenuCalendriers();
+    pop.hidden = !ouvert;
+    menu.classList.toggle('is-open', ouvert);
+  }
+
+  function fermerMenuCalendriers() {
+    var menu = document.querySelector('[data-calmenu]');
+    var pop = document.querySelector('[data-calmenu-pop]');
+    if (pop) pop.hidden = true;
+    if (menu) menu.classList.remove('is-open');
   }
 
   /** Bascule vers un autre calendrier */
@@ -393,10 +430,6 @@
       });
     }
 
-    // Sélecteur de calendrier
-    var selCal = document.getElementById('calendrierActif');
-    if (selCal) selCal.addEventListener('change', function (e) { changerCalendrier(e.target.value); });
-
     // Recherche
     var recherche = document.getElementById('searchInput');
     recherche.addEventListener('input', function () {
@@ -406,6 +439,7 @@
     recherche.addEventListener('focus', function () { if (recherche.value) chercher(recherche.value); });
     document.addEventListener('click', function (e) {
       if (!e.target.closest('.search')) fermerRecherche();
+      if (!e.target.closest('.calmenu')) fermerMenuCalendriers();
     });
 
     // Ligne « maintenant » et changement de jour
@@ -441,7 +475,10 @@
       /* ── Écran de connexion ── */
       case 'peek':          return basculerVisibilite(el);
       case 'offline':       return modeLocal();
-      case 'server-config': return ouvrirCompte();
+
+      /* ── Menu des calendriers ── */
+      case 'cal-menu':      return ouvrirMenuCalendriers();
+      case 'cal-choisir':   fermerMenuCalendriers(); return changerCalendrier(el.dataset.cal);
 
       case 'prev':   return Cal.pas(-1);
       case 'next':   return Cal.pas(1);
@@ -459,13 +496,11 @@
       case 'signin': return retourConnexion();
 
       /* ── Partage ── */
-      case 'inviter':      return creerInvitation();
-      case 'rejoindre':    return rejoindreCalendrier();
+      case 'inviter':      fermerMenuCalendriers(); return creerInvitation();
+      case 'rejoindre':    fermerMenuCalendriers(); return rejoindreCalendrier();
       case 'copier-code':  return copierCode();
       case 'retirer':      return retirerAcces(el.dataset.cal, el.dataset.membre, el.dataset.nom);
       case 'annuler-invit':return annulerInvitation(el.dataset.code);
-      case 'save-server':   return enregistrerServeur();
-      case 'test-server':   return testerServeur();
       case 'export':        return exporterJson();
       case 'import':        return document.getElementById('importFile').click();
       case 'ics':           return exporterIcs();
@@ -571,9 +606,6 @@
       e.target.value = '';
     });
 
-    document.getElementById('serverUrl').addEventListener('keydown', function (e) {
-      if (e.key === 'Enter') { e.preventDefault(); enregistrerServeur(); }
-    });
   }
 
   function rendreSwatches(actif) {
@@ -869,14 +901,6 @@
         '<span class="acct__badge acct__badge--off">Hors compte</span>';
     }
 
-    document.getElementById('serverUrl').value = Api.base || '';
-
-    var org = document.querySelector('[data-origine]');
-    if (org) {
-      org.textContent = Api.origine() || 'null (fichier local)';
-      org.style.color = Api.origine() ? '' : 'var(--danger)';
-    }
-
     // En mode local il n'y a rien à déconnecter : on propose l'inverse,
     // revenir à l'écran de connexion — sans toucher aux données locales.
     document.querySelector('[data-action="logout"]').hidden = !Api.authed();
@@ -889,53 +913,12 @@
         (Store.lastSync ? ' · dernière sauvegarde ' + horaire(Store.lastSync) : '');
     }
 
-    var msg = document.querySelector('[data-server-msg]');
-    if (msg) msg.hidden = true;
-
     var boiteInvite = document.querySelector('[data-invite]');
     if (boiteInvite) boiteInvite.hidden = true;
-    majPartage();
 
     UI.open('accountModal');
+    majPartage();          // après l'ouverture : majPartage n'agit que si visible
     Icons.render(document.getElementById('accountModal'));
-  }
-
-  function enregistrerServeur() {
-    var url = Api.setBase(document.getElementById('serverUrl').value);
-    document.getElementById('serverUrl').value = url;
-    majLibelleServeur();
-    messageServeur(url ? 'Adresse enregistrée. Teste la connexion, puis connecte-toi.' : 'Adresse effacée.', false);
-    UI.ok('Serveur enregistré');
-  }
-
-  function testerServeur() {
-    var url = Api.setBase(document.getElementById('serverUrl').value);
-    document.getElementById('serverUrl').value = url;
-    majLibelleServeur();
-    if (!url) return messageServeur("Renseigne d'abord l'adresse de ton API.", true);
-
-    messageServeur('Test en cours…', false);
-    Api.ping().then(function (d) {
-      messageServeur('Connexion réussie' + (d && d.version ? ' — API v' + d.version : '') + '.', false);
-      UI.ok('Serveur joignable');
-    }).catch(function (e) {
-      messageServeur('Échec : ' + e.message, true);
-    });
-  }
-
-  function messageServeur(txt, erreur) {
-    var p = document.querySelector('[data-server-msg]');
-    if (!p) return;
-    p.textContent = txt;
-    p.hidden = false;
-    p.style.color = erreur ? '' : 'var(--ok)';
-    p.style.background = erreur ? '' : 'rgba(34,197,94,.1)';
-    p.style.borderColor = erreur ? '' : 'rgba(34,197,94,.25)';
-  }
-
-  function majLibelleServeur() {
-    var el = document.querySelector('[data-server-label]');
-    if (el) el.textContent = Api.base ? Api.base.replace(/^https?:\/\//, '') : 'non configuré';
   }
 
   /* ═════════════════ PARTAGE ═════════════════ */
@@ -947,6 +930,8 @@
     var membres = document.querySelector('[data-membres]');
     var invite = document.querySelector('[data-invite]');
     if (!etat || !actions || !membres) return;
+    // Inutile d'interroger le serveur si la fenêtre n'est pas affichée
+    if (!UI.isOpen('accountModal')) return;
 
     if (!Api.authed()) {
       etat.textContent = 'Connecte-toi pour partager ton calendrier.';
@@ -1022,6 +1007,10 @@
     }).then(function (role) {
       if (!role) return;
       return Api.inviter(role).then(function (d) {
+        // Le code s'affiche dans la fenêtre du compte : on l'ouvre si
+        // l'invitation a été lancée depuis le menu de la barre du haut.
+        if (!UI.isOpen('accountModal')) ouvrirCompte();
+
         var boite = document.querySelector('[data-invite]');
         var code = document.querySelector('[data-invite-code]');
         var hint = document.querySelector('[data-invite-hint]');
@@ -1194,6 +1183,7 @@
         if (UI.cancelConfirm()) return;
         if (UI.anyOpen()) return UI.closeTop();
         fermerRecherche();
+        fermerMenuCalendriers();
         return;
       }
 
