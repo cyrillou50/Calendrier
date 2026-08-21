@@ -115,17 +115,17 @@
       return Api.request('/api/health', { auth: false, timeout: 8000 });
     },
 
-    register: function (name, email, password) {
+    register: function (pseudo, password) {
       return Api.request('/api/auth/register', {
         method: 'POST', auth: false,
-        body: { name: name, email: email, password: password }
+        body: { pseudo: pseudo, password: password }
       }).then(session);
     },
 
-    login: function (email, password) {
+    login: function (pseudo, password) {
       return Api.request('/api/auth/login', {
         method: 'POST', auth: false,
-        body: { email: email, password: password }
+        body: { pseudo: pseudo, password: password }
       }).then(session);
     },
 

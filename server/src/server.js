@@ -26,8 +26,8 @@ const TAILLE_MAX = 8 * 1024 * 1024;   // 8 Mo par requête
 const LOT_SYNC = 2000;                // événements renvoyés par appel
 
 /* ═════════════════ Requêtes préparées ═════════════════ */
-const insUser      = db.prepare('INSERT INTO users (id, email, name, pass, created_at) VALUES (?, ?, ?, ?, ?)');
-const parEmail     = db.prepare('SELECT * FROM users WHERE email = ?');
+const insUser      = db.prepare('INSERT INTO users (id, pseudo, pass, created_at) VALUES (?, ?, ?, ?)');
+const parPseudo    = db.prepare('SELECT * FROM users WHERE pseudo = ?');   // COLLATE NOCASE
 const selEvent     = db.prepare('SELECT updated_at FROM events WHERE user_id = ? AND id = ?');
 const compteEvents = db.prepare('SELECT COUNT(*) c FROM events WHERE user_id = ? AND deleted = 0');
 const depuisSeq    = db.prepare(`SELECT * FROM events WHERE user_id = ? AND seq > ? ORDER BY seq LIMIT ${LOT_SYNC}`);
@@ -64,36 +64,36 @@ on('POST', '/api/auth/register', (req) => {
   if (!INSCRIPTIONS_OUVERTES) {
     throw httpErr(403, 'Les inscriptions sont fermées sur ce serveur.');
   }
-  const { name, email, password } = req.body || {};
+  const { pseudo, password } = req.body || {};
 
-  const mail = String(email || '').trim().toLowerCase();
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/.test(mail) || mail.length > 200) {
-    throw httpErr(400, 'Adresse e-mail invalide.');
+  const nom = String(pseudo || '').trim();
+  if (!RE_PSEUDO.test(nom)) {
+    throw httpErr(400, 'Pseudo invalide : 3 à 20 caractères, lettres, chiffres, tiret, point ou souligné.');
   }
   if (typeof password !== 'string' || password.length < 8) {
     throw httpErr(400, 'Le mot de passe doit faire au moins 8 caractères.');
   }
   if (password.length > 200) throw httpErr(400, 'Mot de passe trop long.');
-  if (parEmail.get(mail)) throw httpErr(409, 'Cette adresse e-mail est déjà utilisée.');
+  // La colonne est en COLLATE NOCASE : « Cyril » et « cyril » sont le même compte
+  if (parPseudo.get(nom)) throw httpErr(409, 'Ce pseudo est déjà pris.');
 
   const id = crypto.randomUUID();
-  const nom = String(name || '').trim().slice(0, 80);
-  insUser.run(id, mail, nom, A.hacher(password), Date.now());
+  insUser.run(id, nom, A.hacher(password), Date.now());
 
-  console.log(`[auth] nouveau compte : ${mail}`);
-  return { token: A.creerSession(id), user: { id, email: mail, name: nom } };
+  console.log(`[auth] nouveau compte : ${nom}`);
+  return { token: A.creerSession(id), user: { id, pseudo: nom } };
 }, { limite: [10, 15 * 60_000] });
 
 /* ── Connexion ── */
 on('POST', '/api/auth/login', (req) => {
-  const { email, password } = req.body || {};
-  const u = parEmail.get(String(email || '').trim().toLowerCase());
+  const { pseudo, password } = req.body || {};
+  const u = parPseudo.get(String(pseudo || '').trim());
 
   // Message identique dans les deux cas : ne révèle pas l'existence du compte
   if (!u || !A.verifier(String(password || ''), u.pass)) {
-    throw httpErr(401, 'E-mail ou mot de passe incorrect.');
+    throw httpErr(401, 'Pseudo ou mot de passe incorrect.');
   }
-  return { token: A.creerSession(u.id), user: { id: u.id, email: u.email, name: u.name } };
+  return { token: A.creerSession(u.id), user: { id: u.id, pseudo: u.pseudo } };
 }, { limite: [20, 15 * 60_000] });
 
 on('POST', '/api/auth/logout', (req) => {
@@ -156,11 +156,11 @@ on('POST', '/api/sync', (req) => {
 /* ── Export complet ── */
 on('GET', '/api/export', (req, res) => {
   res.setHeader('Content-Disposition',
-    `attachment; filename="calendrier-${req.user.email.replace(/[^\w.@-]/g, '_')}.json"`);
+    `attachment; filename="calendrier-${req.user.pseudo.replace(/[^\w.-]/g, '_')}.json"`);
   return {
     app: 'calendrier', version: 1,
     exportedAt: new Date().toISOString(),
-    user: { email: req.user.email, name: req.user.name },
+    user: { pseudo: req.user.pseudo },
     events: tousEvents.all(req.user.id).map(versClient)
   };
 }, { auth: true });
@@ -171,6 +171,8 @@ const CATS = ['perso', 'travail', 'rappel', 'autre'];
 const REPEATS = ['none', 'daily', 'weekly', 'monthly', 'yearly'];
 const RE_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const RE_HEURE = /^([01]\d|2[0-3]):[0-5]\d$/;
+// Pseudo : 3 à 20 caractères, lettres/chiffres/. _ -
+const RE_PSEUDO = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{1,18})[A-Za-z0-9]$/;
 
 const txt = (v, max) => String(v ?? '').slice(0, max);
 

@@ -42,7 +42,7 @@ const insSession   = db.prepare('INSERT INTO sessions (token_hash, user_id, crea
 const selSession   = db.prepare('SELECT * FROM sessions WHERE token_hash = ?');
 const touchSession = db.prepare('UPDATE sessions SET last_seen = ? WHERE token_hash = ?');
 const delSession   = db.prepare('DELETE FROM sessions WHERE token_hash = ?');
-const selUser      = db.prepare('SELECT id, email, name, created_at FROM users WHERE id = ?');
+const selUser      = db.prepare('SELECT id, pseudo, created_at FROM users WHERE id = ?');
 
 function creerSession(userId) {
   const jeton = crypto.randomBytes(32).toString('base64url');

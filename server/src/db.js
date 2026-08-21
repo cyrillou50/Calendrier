@@ -35,8 +35,7 @@ db.exec('PRAGMA busy_timeout = 5000');
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id          TEXT PRIMARY KEY,
-    email       TEXT NOT NULL UNIQUE,
-    name        TEXT NOT NULL DEFAULT '',
+    pseudo      TEXT NOT NULL UNIQUE COLLATE NOCASE,
     pass        TEXT NOT NULL,
     created_at  INTEGER NOT NULL
   );
@@ -80,6 +79,47 @@ db.exec(`
   );
   INSERT OR IGNORE INTO meta (k, v) VALUES ('seq', 0);
 `);
+
+/* ─────────── Migration : « email » devient « pseudo » ───────────
+   Les bases créées avant ce changement ont une colonne email.
+   On reconstruit la table, en conservant comptes et données.
+   Les clés étrangères sont désactivées le temps de l'opération :
+   sans cela, le DROP TABLE effacerait sessions et événements. */
+{
+  const colonnes = db.prepare('PRAGMA table_info(users)').all().map(c => c.name);
+  if (colonnes.includes('email') && !colonnes.includes('pseudo')) {
+    console.log('[db] migration en cours : email → pseudo');
+    db.exec('PRAGMA foreign_keys = OFF');
+    db.exec('BEGIN');
+    try {
+      db.exec(`
+        CREATE TABLE users_v2 (
+          id          TEXT PRIMARY KEY,
+          pseudo      TEXT NOT NULL UNIQUE COLLATE NOCASE,
+          pass        TEXT NOT NULL,
+          created_at  INTEGER NOT NULL
+        );
+        INSERT INTO users_v2 (id, pseudo, pass, created_at)
+          SELECT id,
+                 CASE WHEN instr(email, '@') > 1
+                      THEN substr(email, 1, instr(email, '@') - 1)
+                      ELSE email END,
+                 pass, created_at
+          FROM users;
+        DROP TABLE users;
+        ALTER TABLE users_v2 RENAME TO users;
+      `);
+      db.exec('COMMIT');
+      const n = db.prepare('SELECT COUNT(*) c FROM users').get().c;
+      console.log(`[db] migration terminée — ${n} compte(s) conservé(s)`);
+    } catch (e) {
+      db.exec('ROLLBACK');
+      console.error('[db] migration impossible :', e.message);
+      throw e;
+    }
+    db.exec('PRAGMA foreign_keys = ON');
+  }
+}
 
 /* Compteur monotone global : sert de curseur de synchronisation.
    Plus fiable qu'un horodatage — pas de collision, pas de dérive d'horloge. */

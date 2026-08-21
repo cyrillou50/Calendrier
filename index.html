@@ -53,9 +53,10 @@
         <h2 class="form__title">Content de te revoir</h2>
         <p class="form__hint">Connecte-toi pour retrouver ton calendrier.</p>
         <label class="field">
-          <span class="field__label">Adresse e-mail</span>
-          <span class="field__wrap"><i data-ico="mail"></i>
-            <input type="email" name="email" autocomplete="email" placeholder="toi@exemple.fr" required>
+          <span class="field__label">Pseudo</span>
+          <span class="field__wrap"><i data-ico="user"></i>
+            <input type="text" name="pseudo" autocomplete="username" placeholder="Cyrillou" required
+                   autocapitalize="none" spellcheck="false">
           </span>
         </label>
         <label class="field">
@@ -76,17 +77,13 @@
         <h2 class="form__title">Bienvenue</h2>
         <p class="form__hint">Quelques secondes et c&rsquo;est parti.</p>
         <label class="field">
-          <span class="field__label">Nom d&rsquo;affichage</span>
+          <span class="field__label">Pseudo</span>
           <span class="field__wrap"><i data-ico="user"></i>
-            <input type="text" name="name" autocomplete="nickname" placeholder="Cyril" required>
+            <input type="text" name="pseudo" autocomplete="username" placeholder="Cyrillou" required
+                   minlength="3" maxlength="20" autocapitalize="none" spellcheck="false">
           </span>
         </label>
-        <label class="field">
-          <span class="field__label">Adresse e-mail</span>
-          <span class="field__wrap"><i data-ico="mail"></i>
-            <input type="email" name="email" autocomplete="email" placeholder="toi@exemple.fr" required>
-          </span>
-        </label>
+        <p class="note"><i data-ico="info"></i> 3 à 20 caractères : lettres, chiffres, point, tiret ou souligné.</p>
         <label class="field">
           <span class="field__label">Mot de passe</span>
           <span class="field__wrap"><i data-ico="lock"></i>

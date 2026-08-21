@@ -85,7 +85,7 @@
     Cal.render();
 
     var av = document.querySelector('[data-avatar]');
-    if (av) av.textContent = utilisateur ? UI.initiales(utilisateur.name || utilisateur.email) : '·';
+    if (av) av.textContent = utilisateur ? UI.initiales(utilisateur.pseudo) : '·';
     majEtatSync();
 
     if (!App.pret) { brancherApp(); App.pret = true; }
@@ -128,14 +128,18 @@
     ecran.querySelector('#loginForm').addEventListener('submit', function (e) {
       e.preventDefault();
       var f = e.target;
-      soumettre(f, Api.login(f.elements.email.value.trim(), f.elements.password.value), 'Connexion…');
+      soumettre(f, Api.login(f.elements.pseudo.value.trim(), f.elements.password.value), 'Connexion…');
     });
 
     ecran.querySelector('#registerForm').addEventListener('submit', function (e) {
       e.preventDefault();
       var f = e.target;
+      var pseudo = f.elements.pseudo.value.trim();
+      if (!/^[A-Za-z0-9][A-Za-z0-9._-]{1,18}[A-Za-z0-9]$/.test(pseudo)) {
+        return erreurForm(f, 'Pseudo invalide : 3 à 20 caractères, lettres, chiffres, point, tiret ou souligné.');
+      }
       if (f.elements.password.value.length < 8) return erreurForm(f, 'Le mot de passe doit faire au moins 8 caractères.');
-      soumettre(f, Api.register(f.elements.name.value.trim(), f.elements.email.value.trim(), f.elements.password.value), 'Création…');
+      soumettre(f, Api.register(pseudo, f.elements.password.value), 'Création…');
     });
   }
 
@@ -167,7 +171,7 @@
       try { localStorage.setItem(K_MODE, 'compte'); } catch (e) {}
       return migrerDonneesLocales(utilisateur).then(function () {
         ouvrirApp(utilisateur.id, utilisateur);
-        UI.ok('Bienvenue, ' + (utilisateur.name || utilisateur.email) + ' !');
+        UI.ok('Bienvenue, ' + utilisateur.pseudo + ' !');
         synchroniser(true);
       });
     }).catch(function (e) {
@@ -726,9 +730,9 @@
     var box = document.querySelector('[data-acct]');
     if (Api.authed()) {
       box.innerHTML =
-        '<div class="acct__av">' + UI.esc(UI.initiales(Api.user.name || Api.user.email)) + '</div>' +
-        '<div style="min-width:0"><div class="acct__n">' + UI.esc(Api.user.name || '—') + '</div>' +
-        '<div class="acct__e">' + UI.esc(Api.user.email) + '</div></div>' +
+        '<div class="acct__av">' + UI.esc(UI.initiales(Api.user.pseudo)) + '</div>' +
+        '<div style="min-width:0"><div class="acct__n">' + UI.esc(Api.user.pseudo) + '</div>' +
+        '<div class="acct__e">Synchronisé sur ton serveur</div></div>' +
         '<span class="acct__badge acct__badge--on">Connecté</span>';
     } else {
       box.innerHTML =

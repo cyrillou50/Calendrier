@@ -13,6 +13,7 @@ const suites = [
   ['Modèle de données et dates', 'test/store.test.js'],
   ['Moteur de rendu des vues',   'test/render.test.js'],
   ['Pièges du navigateur',       'test/lint.test.js'],
+  ['Migration de la base',        'server/test/migration.js'],
   ['API du serveur (bout en bout)', 'server/test/e2e.js']
 ];
 
