@@ -106,8 +106,15 @@
         if (timer) clearTimeout(timer);
         if (e && e.code) throw e;
         if (e && e.name === 'AbortError') throw err('TIMEOUT', 'Le serveur met trop de temps à répondre.');
-        throw err('NETWORK', 'Serveur injoignable. Vérifie son adresse, le HTTPS et la configuration CORS.');
+        // `fetch` ne dit jamais POURQUOI il a échoué : on va le déterminer.
+        return diagnostiquer().then(function (message) { throw err('NETWORK', message); });
       });
+    },
+
+    /** Message de diagnostic, sans lancer de requête (pour l'affichage) */
+    origine: function () {
+      var o = global.location && global.location.origin;
+      return (o && o !== 'null') ? o : null;
     },
 
     /* ── Points d'entrée ── */
@@ -208,6 +215,35 @@
     var e = new Error(message);
     e.code = code;
     return e;
+  }
+
+  /**
+   * Détermine la vraie cause d'un échec réseau.
+   * Une requête « no-cors » aboutit dès que le serveur répond, même
+   * lorsque CORS interdit de lire la réponse. Si elle passe, le serveur
+   * est joignable et c'est donc CORS qui bloque ; sinon il est vraiment
+   * hors d'atteinte.
+   */
+  function diagnostiquer() {
+    var origine = Api.origine();
+
+    return fetch(Api.base + '/api/health', { mode: 'no-cors', cache: 'no-store' })
+      .then(function () {
+        if (!origine) {
+          return 'Le serveur répond, mais cette page est ouverte en fichier local. ' +
+                 'Le navigateur envoie « Origin: null », que le serveur refuse. ' +
+                 'Ouvre le site par son adresse https:// (GitHub Pages).';
+        }
+        return 'Le serveur répond mais refuse ce site (CORS).\n' +
+               'Sur le VPS, dans /opt/calendrier/server/.env :\n' +
+               'ALLOWED_ORIGINS=' + origine + '\n' +
+               'puis : systemctl restart calendrier-api';
+      })
+      .catch(function () {
+        return 'Serveur injoignable à l’adresse ' + Api.base + '.\n' +
+               'Vérifie le DNS, le certificat HTTPS, et que le service tourne ' +
+               '(systemctl status calendrier-api).';
+      });
   }
 
   function messageHttp(s) {

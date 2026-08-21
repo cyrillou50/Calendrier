@@ -317,6 +317,8 @@ textarea:focus { border-color: var(--accent); box-shadow: var(--ring); }
   font-size: 13px; color: var(--danger); background: rgba(244,63,94,.1);
   border: 1px solid rgba(244,63,94,.25); border-radius: 10px; padding: 9px 12px;
   animation: shake .4s;
+  white-space: pre-line;      /* les diagnostics tiennent sur plusieurs lignes */
+  word-break: break-word;
 }
 @keyframes shake { 10%,90% { transform: translateX(-2px); } 30%,70% { transform: translateX(4px); } 50% { transform: translateX(-4px); } }
 

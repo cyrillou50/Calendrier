@@ -743,6 +743,13 @@
     }
 
     document.getElementById('serverUrl').value = Api.base || '';
+
+    var org = document.querySelector('[data-origine]');
+    if (org) {
+      org.textContent = Api.origine() || 'null (fichier local)';
+      org.style.color = Api.origine() ? '' : 'var(--danger)';
+    }
+
     // En mode local il n'y a rien à déconnecter : on propose l'inverse,
     // revenir à l'écran de connexion — sans toucher aux données locales.
     document.querySelector('[data-action="logout"]').hidden = !Api.authed();
