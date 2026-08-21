@@ -30,6 +30,11 @@ const LOT_SYNC = 2000;                // événements renvoyés par appel
 const LIMITE_INSCRIPTION = Number(process.env.RATE_LIMIT_REGISTER || 10);
 const LIMITE_CONNEXION   = Number(process.env.RATE_LIMIT_LOGIN || 20);
 
+// Longueur minimale du mot de passe. Volontairement basse : c'est la
+// limitation de débit ci-dessus qui porte l'essentiel de la protection
+// contre le bourrinage, pas la longueur.
+const MDP_MIN = Number(process.env.PASSWORD_MIN_LENGTH || 4);
+
 /* ═════════════════ Requêtes préparées ═════════════════ */
 const insUser      = db.prepare('INSERT INTO users (id, pseudo, pass, created_at) VALUES (?, ?, ?, ?)');
 const parPseudo    = db.prepare('SELECT * FROM users WHERE pseudo = ?');   // COLLATE NOCASE
@@ -96,8 +101,8 @@ on('POST', '/api/auth/register', (req) => {
   if (!RE_PSEUDO.test(nom)) {
     throw httpErr(400, 'Pseudo invalide : 3 à 20 caractères, lettres, chiffres, tiret, point ou souligné.');
   }
-  if (typeof password !== 'string' || password.length < 8) {
-    throw httpErr(400, 'Le mot de passe doit faire au moins 8 caractères.');
+  if (typeof password !== 'string' || password.length < MDP_MIN) {
+    throw httpErr(400, `Le mot de passe doit faire au moins ${MDP_MIN} caractères.`);
   }
   if (password.length > 200) throw httpErr(400, 'Mot de passe trop long.');
   // La colonne est en COLLATE NOCASE : « Cyril » et « cyril » sont le même compte

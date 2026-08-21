@@ -7,6 +7,7 @@
   var D = global.Dates;
   var K_THEME = 'calendrier:theme';
   var K_MODE  = 'calendrier:mode';   // 'local' | 'compte'
+  var MDP_MIN = 4;                   // doit rester aligné sur le serveur
 
   var App = {
     pret: false,
@@ -255,7 +256,9 @@
       if (!/^[A-Za-z0-9][A-Za-z0-9._-]{1,18}[A-Za-z0-9]$/.test(pseudo)) {
         return erreurForm(f, 'Pseudo invalide : 3 à 20 caractères, lettres, chiffres, point, tiret ou souligné.');
       }
-      if (f.elements.password.value.length < 8) return erreurForm(f, 'Le mot de passe doit faire au moins 8 caractères.');
+      if (f.elements.password.value.length < MDP_MIN) {
+        return erreurForm(f, 'Le mot de passe doit faire au moins ' + MDP_MIN + ' caractères.');
+      }
       soumettre(f, Api.register(pseudo, f.elements.password.value), 'Création…');
     });
   }
@@ -343,6 +346,7 @@
     var barre = ecran.querySelector('[data-meter]');
     var lbl = ecran.querySelector('[data-meter-label]');
     var s = 0;
+    if (v.length >= MDP_MIN) s++;   // palier minimal accepté
     if (v.length >= 8) s++;
     if (v.length >= 12) s++;
     if (/[a-z]/.test(v) && /[A-Z]/.test(v)) s++;

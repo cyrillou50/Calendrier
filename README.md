@@ -285,7 +285,7 @@ sien — le partage ne se propage pas en cascade.
 
 ## Tests
 
-217 tests couvrent le calcul des dates, les récurrences, le rendu des vues,
+220 tests couvrent le calcul des dates, les récurrences, le rendu des vues,
 l'échappement HTML, l'API, le partage et ses droits, l'isolation entre comptes,
 la résolution de conflits et les pièges silencieux du navigateur.
 
@@ -295,7 +295,7 @@ node test/store.test.js      # dates, récurrences, catégories     (53)
 node test/render.test.js     # rendu des 4 vues, sécurité XSS     (25)
 node test/lint.test.js       # pièges du navigateur                (9)
 node server/test/migration.js# migration de la base               (14)
-node server/test/e2e.js      # API de bout en bout               (116)
+node server/test/e2e.js      # API de bout en bout               (119)
 ```
 
 `lint.test.js` attrape une famille d'erreurs que rien d'autre ne voit :

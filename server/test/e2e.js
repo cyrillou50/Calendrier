@@ -136,10 +136,26 @@ const ev = (id, extra = {}) => ({
     });
     eq('doublon insensible à la casse 409', casse.statut, 409);
 
+    // Le minimum est de 4 caractères
     const court = await appel('/api/auth/register', {
-      methode: 'POST', body: { pseudo: 'zoe', password: 'court' }
+      methode: 'POST', body: { pseudo: 'zoe', password: 'abc' }
     });
-    eq('mot de passe court 400', court.statut, 400);
+    eq('mot de passe de 3 caractères refusé', court.statut, 400);
+
+    const vide = await appel('/api/auth/register', {
+      methode: 'POST', body: { pseudo: 'zoe2', password: '' }
+    });
+    eq('mot de passe vide refusé', vide.statut, 400);
+
+    const pile = await appel('/api/auth/register', {
+      methode: 'POST', body: { pseudo: 'zoe3', password: '1234' }
+    });
+    eq('mot de passe de 4 caractères accepté', pile.statut, 200);
+
+    const cnx = await appel('/api/auth/login', {
+      methode: 'POST', body: { pseudo: 'zoe3', password: '1234' }
+    });
+    eq('connexion avec 4 caractères', cnx.statut, 200);
 
     for (const [libelle, p] of [
       ['pseudo trop court', 'ab'],
