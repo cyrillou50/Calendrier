@@ -218,6 +218,14 @@
       return Api.request('/api/partage/annuler', { method: 'POST', body: { code: code } });
     },
 
+    /** Signale qu'on est actif, et récupère qui d'autre l'est */
+    presence: function () {
+      return Api.request('/api/presence', {
+        method: 'POST', timeout: 8000,
+        body: { calendrier: Api.calendrier || undefined }
+      });
+    },
+
     logout: function () {
       var p = Api.token ? Api.request('/api/auth/logout', { method: 'POST' }).catch(function () {}) : Promise.resolve();
       return p.then(function () { Api.clearSession(); });

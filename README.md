@@ -15,6 +15,7 @@ Le site est **statique** (GitHub Pages), les données sont **sauvegardées sur t
 - **Thème clair et sombre**, responsive jusqu'au mobile
 - **Comptes** — pseudo + mot de passe haché (scrypt), sessions révocables
 - **Partage à plusieurs** — invite quelqu'un par code, en lecture seule ou avec droit de modification
+- **Présence en direct** — pastille verte sur les personnes actuellement sur le calendrier
 - **Synchronisation multi-appareils** avec résolution de conflits
 - **Fonctionne hors ligne** — tout est en local d'abord, la synchro rattrape ensuite
 - **Exports** JSON et `.ics` (importable dans Google Agenda, Outlook, Apple Calendrier)
@@ -251,7 +252,18 @@ serveur à répondre « ce pseudo existe » ou « il n'existe pas », ce qui per
 deviner qui a un compte. Le code ne révèle rien.
 
 Chaque code est **à usage unique**, valable **7 jours**, et annulable à tout
-moment. Le propriétaire peut retirer un accès quand il veut ; un invité peut se
+moment. Dans **Compte & sauvegarde**, le propriétaire voit la liste de tous ceux qui
+ont accès à son calendrier, avec une **pastille verte** quand la personne y est
+en ce moment, ou « vu il y a X min » sinon. Le bouton ✕ retire l'accès
+immédiatement. Une pastille apparaît aussi sur le bouton des calendriers dès
+que quelqu'un d'autre est en train de consulter le même calendrier que toi.
+
+La présence est tenue en mémoire du serveur, jamais écrite sur disque : elle
+n'a aucun sens après un redémarrage, et ça évite une écriture par minute et par
+personne. Elle expire d'elle-même au bout de deux minutes sans signe de vie, et
+un onglet en arrière-plan cesse d'émettre — pas de fausse présence.
+
+Le propriétaire peut retirer un accès quand il veut ; un invité peut se
 retirer lui-même. Personne ne peut réinviter sur un calendrier qui n'est pas le
 sien — le partage ne se propage pas en cascade.
 
@@ -272,7 +284,7 @@ sien — le partage ne se propage pas en cascade.
 
 ## Tests
 
-179 tests couvrent le calcul des dates, les récurrences, le rendu des vues,
+188 tests couvrent le calcul des dates, les récurrences, le rendu des vues,
 l'échappement HTML, l'API, le partage et ses droits, l'isolation entre comptes,
 la résolution de conflits et les pièges silencieux du navigateur.
 
@@ -282,7 +294,7 @@ node test/store.test.js      # dates, récurrences, stockage       (32)
 node test/render.test.js     # rendu des 4 vues, sécurité XSS     (27)
 node test/lint.test.js       # pièges du navigateur                (9)
 node server/test/migration.js# migration de la base               (14)
-node server/test/e2e.js      # API de bout en bout                (97)
+node server/test/e2e.js      # API de bout en bout               (106)
 ```
 
 `lint.test.js` attrape une famille d'erreurs que rien d'autre ne voit :

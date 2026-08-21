@@ -12,6 +12,11 @@
     pret: false,
     minuteurSync: null,
     minuteurRecherche: null,
+    minuteurPresence: null,
+    minuteurMembres: null,
+    presents: [],       // qui d'autre est sur le calendrier affiché
+    codeInvite: null,
+    jourOuvert: null,
     occCourante: null   // occurrence en cours d'édition { id, date }
   };
 
@@ -88,6 +93,7 @@
     majEtatSync();
     majCalendriers();
     majDroits();
+    demarrerPresence();
 
     if (!App.pret) { brancherApp(); App.pret = true; }
     Icons.render();
@@ -182,7 +188,10 @@
       UI.info(c && c.role === 'proprietaire'
         ? 'Ton calendrier'
         : 'Calendrier de ' + (c ? c.pseudo : '?'));
+      App.presents = [];
+      majPresenceBouton();
       synchroniser(true);
+      battre();                 // on annonce sa présence sur le nouveau calendrier
     }
 
     // On termine la synchro en cours AVANT de changer d'espace de stockage,
@@ -451,7 +460,7 @@
     global.addEventListener('online', function () { majEtatSync(); synchroniser(true); });
     global.addEventListener('offline', majEtatSync);
     document.addEventListener('visibilitychange', function () {
-      if (!document.hidden && Api.authed()) synchroniser(true);
+      if (!document.hidden && Api.authed()) { synchroniser(true); battre(); }
     });
     global.addEventListener('resize', function () {
       if (Cal.vue === 'month') Cal.ajusterMois();
@@ -921,6 +930,55 @@
     Icons.render(document.getElementById('accountModal'));
   }
 
+  /* ═════════════════ PRÉSENCE ═════════════════ */
+
+  /**
+   * Battement de cœur : signale qu'on est actif sur le calendrier affiché.
+   * Ne bat que si l'onglet est visible — un onglet en arrière-plan ne doit
+   * pas faire croire qu'on est là. La présence expire d'elle-même après
+   * deux minutes côté serveur.
+   */
+  function demarrerPresence() {
+    arreterPresence();
+    if (!Api.authed()) return;
+    battre();
+    App.minuteurPresence = setInterval(battre, 60000);
+  }
+
+  function arreterPresence() {
+    if (App.minuteurPresence) clearInterval(App.minuteurPresence);
+    App.minuteurPresence = null;
+  }
+
+  function battre() {
+    if (!Api.authed() || document.hidden || !navigator.onLine) return;
+    Api.presence().then(function (d) {
+      App.presents = (d && d.presents) || [];
+      majPresenceBouton();
+    }).catch(function () { /* sans conséquence */ });
+  }
+
+  /** Pastille sur le bouton des calendriers quand quelqu'un d'autre est là */
+  function majPresenceBouton() {
+    var btn = document.querySelector('[data-action="cal-menu"]');
+    if (!btn) return;
+    var n = (App.presents || []).length;
+    var pastille = btn.querySelector('.calmenu__presence');
+
+    if (n && !pastille) {
+      pastille = document.createElement('i');
+      pastille.className = 'calmenu__presence';
+      btn.appendChild(pastille);
+    } else if (!n && pastille) {
+      pastille.remove();
+    }
+    if (pastille) {
+      pastille.title = n === 1
+        ? (App.presents[0].pseudo + ' est sur ce calendrier')
+        : n + ' personnes sont sur ce calendrier';
+    }
+  }
+
   /* ═════════════════ PARTAGE ═════════════════ */
 
   /** Affiche l'état du partage dans la fenêtre « Compte & sauvegarde » */
@@ -952,9 +1010,11 @@
       // Personnes ayant accès à MON calendrier
       (d.membres || []).forEach(function (m) {
         h += '<li>' +
-               '<span class="membres__av">' + UI.esc(UI.initiales(m.pseudo)) + '</span>' +
+               '<span class="membres__av">' + UI.esc(UI.initiales(m.pseudo)) +
+                 '<i class="membres__dot' + (m.enLigne ? ' is-online' : '') + '"></i></span>' +
                '<span><span class="membres__n">' + UI.esc(m.pseudo) + '</span>' +
-               '<span class="membres__r">' + (m.role === 'lecture' ? 'lecture seule' : 'peut modifier') + '</span></span>' +
+               '<span class="membres__r">' + presenceTexte(m) + ' · ' +
+                 (m.role === 'lecture' ? 'lecture seule' : 'peut modifier') + '</span></span>' +
                '<button class="membres__x" data-action="retirer" data-cal="' + UI.esc(Api.user.id) + '" ' +
                  'data-membre="' + UI.esc(m.id) + '" data-nom="' + UI.esc(m.pseudo) + '" ' +
                  'title="Retirer l’accès"><i data-ico="x"></i></button>' +
@@ -977,9 +1037,11 @@
       (d.calendriers || []).forEach(function (c) {
         if (c.role === 'proprietaire') return;
         h += '<li>' +
-               '<span class="membres__av">' + UI.esc(UI.initiales(c.pseudo)) + '</span>' +
+               '<span class="membres__av">' + UI.esc(UI.initiales(c.pseudo)) +
+                 '<i class="membres__dot' + (c.enLigne ? ' is-online' : '') + '"></i></span>' +
                '<span><span class="membres__n">Calendrier de ' + UI.esc(c.pseudo) + '</span>' +
-               '<span class="membres__r">' + (c.role === 'lecture' ? 'lecture seule' : 'tu peux modifier') + '</span></span>' +
+               '<span class="membres__r">' + presenceTexte(c) + ' · ' +
+                 (c.role === 'lecture' ? 'lecture seule' : 'tu peux modifier') + '</span></span>' +
                '<button class="membres__x" data-action="retirer" data-cal="' + UI.esc(c.id) + '" ' +
                  'data-membre="' + UI.esc(Api.user.id) + '" data-nom="' + UI.esc(c.pseudo) + '" ' +
                  'title="Quitter ce calendrier"><i data-ico="out"></i></button>' +
@@ -989,9 +1051,25 @@
       membres.innerHTML = h || '<li class="membres__vide">Personne ne partage ton calendrier pour l’instant.</li>';
       Icons.render(membres);
       majCalendriers();
+
+      // Rafraîchissement tant que la fenêtre reste ouverte ; la garde en
+      // tête de majPartage interrompt la chaîne dès qu'elle se ferme.
+      clearTimeout(App.minuteurMembres);
+      App.minuteurMembres = setTimeout(majPartage, 20000);
     }).catch(function (e) {
       membres.innerHTML = '<li class="membres__vide">' + UI.esc(e.message) + '</li>';
     });
+  }
+
+  /** « en ligne », « il y a 12 min », ou « jamais connecté » */
+  function presenceTexte(p) {
+    if (p.enLigne) return '<b class="membres__en-ligne">en ligne</b>';
+    if (!p.vuLe) return 'hors ligne';
+    var min = Math.round((Date.now() - p.vuLe) / 60000);
+    if (min < 60) return 'vu il y a ' + min + ' min';
+    var heures = Math.round(min / 60);
+    if (heures < 24) return 'vu il y a ' + heures + ' h';
+    return 'vu il y a ' + Math.round(heures / 24) + ' j';
   }
 
   function creerInvitation() {
@@ -1106,6 +1184,9 @@
   function deconnexion(force) {
     var fin = function () {
       try { localStorage.removeItem(K_MODE); } catch (e) {}
+      arreterPresence();
+      clearTimeout(App.minuteurMembres);
+      App.presents = [];
       Api.clearSession();
       UI.close('accountModal');
       ouvrirAuth();

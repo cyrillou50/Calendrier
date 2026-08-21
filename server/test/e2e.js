@@ -432,6 +432,40 @@ const ev = (id, extra = {}) => ({
     eq('écriture refusée en lecture seule', ecrit.statut, 403);
   }
   {
+    // Présence en direct
+    const p = await appel('/api/presence', {
+      methode: 'POST', jeton: jetonB, body: { calendrier: userA.id }
+    });
+    eq('battement accepté', p.statut, 200);
+    vrai('B ne se compte pas lui-même', p.data.presents.every(x => x.pseudo !== 'Amie'));
+
+    const vuParA = await appel('/api/presence', {
+      methode: 'POST', jeton: jetonA, body: { calendrier: userA.id }
+    });
+    vrai('A voit B présent', vuParA.data.presents.some(x => x.pseudo === 'Amie'));
+    vrai('A ne se compte pas lui-même', vuParA.data.presents.every(x => x.pseudo !== 'Cyrillou'));
+    vrai('horodatage fourni', vuParA.data.presents.every(x => typeof x.vuLe === 'number'));
+
+    const etat = await appel('/api/partage', { jeton: jetonA });
+    const amie = etat.data.membres.find(m => m.pseudo === 'Amie');
+    eq('membre marqué en ligne', amie.enLigne, true);
+    vrai('horodatage de présence', typeof amie.vuLe === 'number');
+
+    // Un tiers ne peut pas se signaler sur un calendrier interdit
+    const intrus = await appel('/api/auth/register', {
+      methode: 'POST', body: { pseudo: 'Curieux', password: 'motdepasse123' }
+    });
+    const refus = await appel('/api/presence', {
+      methode: 'POST', jeton: intrus.data.token, body: { calendrier: userA.id }
+    });
+    eq('présence refusée sans accès 403', refus.statut, 403);
+
+    const apresRefus = await appel('/api/presence', {
+      methode: 'POST', jeton: jetonA, body: { calendrier: userA.id }
+    });
+    eq('l’intrus n’apparaît pas', apresRefus.data.presents.filter(x => x.pseudo === 'Curieux').length, 0);
+  }
+  {
     // Retrait d'accès
     const pasMoi = await appel('/api/partage/retirer', {
       methode: 'POST', jeton: jetonB, body: { calendrier: userA.id, utilisateur: userA.id }

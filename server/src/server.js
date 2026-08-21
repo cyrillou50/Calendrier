@@ -214,13 +214,76 @@ on('POST', '/api/partage/rejoindre', (req) => {
   };
 }, { auth: true, limite: [30, 3600_000] });
 
+/* ═════════════════ PRÉSENCE ═════════════════
+   Volontairement gardée en mémoire : une présence n'a aucun sens
+   après un redémarrage, et cela évite une écriture disque par minute
+   et par personne connectée. */
+
+const FENETRE_PRESENCE = 120_000;          // au-delà, on considère la personne partie
+const presences = new Map();               // "calendrierId|userId" -> horodatage
+
+function marquerPresence(userId, calendrierId) {
+  presences.set(calendrierId + '|' + userId, Date.now());
+}
+
+/** Date de dernière activité d'une personne sur un calendrier, ou null */
+function vuLe(userId, calendrierId) {
+  const t = presences.get(calendrierId + '|' + userId);
+  return t && Date.now() - t < FENETRE_PRESENCE * 30 ? t : null;
+}
+
+function estEnLigne(userId, calendrierId) {
+  const t = presences.get(calendrierId + '|' + userId);
+  return !!t && Date.now() - t < FENETRE_PRESENCE;
+}
+
+/** Qui est actuellement sur ce calendrier (hors soi-même) */
+function presentsSur(calendrierId, saufUserId) {
+  const out = [];
+  const limite = Date.now() - FENETRE_PRESENCE;
+  for (const [cle, ts] of presences) {
+    if (ts < limite) continue;
+    const sep = cle.indexOf('|');
+    if (cle.slice(0, sep) !== calendrierId) continue;
+    const uid = cle.slice(sep + 1);
+    if (uid === saufUserId) continue;
+    const u = parId.get(uid);
+    if (u) out.push({ id: uid, pseudo: u.pseudo, vuLe: ts });
+  }
+  return out;
+}
+
+// Purge des présences périmées, toutes les 5 minutes
+setInterval(() => {
+  const limite = Date.now() - FENETRE_PRESENCE * 30;
+  for (const [cle, ts] of presences) if (ts < limite) presences.delete(cle);
+}, 5 * 60_000).unref();
+
+/* ── Battement de cœur ── */
+on('POST', '/api/presence', (req) => {
+  const calId = String(req.body?.calendrier || req.user.id);
+  if (!roleSur(req.user.id, calId)) throw httpErr(403, 'Tu n’as pas accès à ce calendrier.');
+
+  marquerPresence(req.user.id, calId);
+  return { presents: presentsSur(calId, req.user.id) };
+}, { auth: true });
+
 /* ── État du partage ── */
 on('GET', '/api/partage', (req) => ({
   membres: membresDuCal.all(req.user.id).map(m => ({
-    id: m.user_id, pseudo: m.pseudo, role: m.role, depuis: m.created_at
+    id: m.user_id, pseudo: m.pseudo, role: m.role, depuis: m.created_at,
+    enLigne: estEnLigne(m.user_id, req.user.id),
+    vuLe: vuLe(m.user_id, req.user.id)
   })),
   invitations: invitsActives.all(req.user.id, Date.now()),
-  calendriers: calendriersDe(req.user.id)
+  calendriers: calendriersDe(req.user.id).map(c => (
+    c.role === 'proprietaire' ? c : Object.assign({}, c, {
+      // pour un calendrier partagé : le propriétaire y est-il en ce moment ?
+      enLigne: estEnLigne(c.id, c.id),
+      vuLe: vuLe(c.id, c.id)
+    })
+  )),
+  presents: presentsSur(req.user.id, req.user.id)
 }), { auth: true });
 
 /* ── Retirer un accès ──
@@ -260,6 +323,9 @@ on('POST', '/api/sync', (req) => {
   const calId = String(req.body?.calendrier || req.user.id);
   const role = roleSur(req.user.id, calId);
   if (!role) throw httpErr(403, 'Tu n’as pas accès à ce calendrier.');
+
+  marquerPresence(req.user.id, calId);   // synchroniser vaut signe de vie
+
   if (entrants.length && role === 'lecture') {
     throw httpErr(403, 'Tu es en lecture seule sur ce calendrier.');
   }

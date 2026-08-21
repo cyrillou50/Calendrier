@@ -751,10 +751,38 @@ textarea:focus { border-color: var(--accent); box-shadow: var(--ring); }
   background: var(--surface-2); border: 1px solid var(--line);
 }
 .membres__av {
+  position: relative;
   width: 30px; height: 30px; border-radius: 50%; flex: 0 0 auto;
   background: var(--grad); color: #fff; font-size: 12px; font-weight: 700;
   display: grid; place-items: center;
 }
+
+/* Pastille de présence */
+.membres__dot {
+  position: absolute; right: -1px; bottom: -1px;
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--text-3); border: 2px solid var(--surface-2);
+  transition: background .2s;
+}
+.membres__dot.is-online {
+  background: var(--ok);
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, .22);
+  animation: respire 2.4s ease-in-out infinite;
+}
+@keyframes respire {
+  50% { box-shadow: 0 0 0 5px rgba(34, 197, 94, .1); }
+}
+.membres__en-ligne { color: var(--ok); font-weight: 600; }
+
+/* Pastille sur le bouton des calendriers */
+.calmenu__presence {
+  position: absolute; top: 4px; right: 4px;
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--ok); border: 2px solid var(--surface);
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, .25);
+  animation: respire 2.4s ease-in-out infinite;
+}
+.calmenu__btn { position: relative; }
 .membres__n { font-size: 13px; font-weight: 600; }
 .membres__r { font-size: 11px; color: var(--text-3); }
 .membres__x {
