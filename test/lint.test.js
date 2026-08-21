@@ -113,10 +113,25 @@ console.log('\n── Sélecteurs et ressources ──');
   for (const m of html.matchAll(/data-action="([\w-]+)"/g)) actions.add(m[1]);
   const traitees = new Set();
   for (const m of js.app.matchAll(/case '([\w-]+)':/g)) traitees.add(m[1]);
-  // celles gérées à part sur l'écran de connexion
-  ['peek', 'offline', 'server-config', 'theme'].forEach(a => traitees.add(a));
+  // toutes les actions passent par le switch de executer()
   verifie('toutes les actions du HTML sont traitées',
     [...actions].filter(a => !traitees.has(a)));
+
+  // Les modales vivent HORS de #app : si la délégation des actions est
+  // posée sur #app, leurs boutons ne répondent jamais. Elle doit être
+  // au niveau du document.
+  const delegationGlobale = /document\.addEventListener\('click',[\s\S]{0,220}\[data-action\]/.test(js.app);
+  verifie('les actions sont déléguées au document, pas à #app',
+    delegationGlobale ? [] : ['la délégation [data-action] doit être posée sur document : ' +
+      'les modales sont hors de #app et ne recevraient jamais le clic']);
+
+  // Chaque action utilisée dans une modale doit exister
+  const dansModales = new Set();
+  for (const bloc of html.matchAll(/<div class="modal"[\s\S]*?<\/div>\s*<\/div>/g)) {
+    for (const m of bloc[0].matchAll(/data-action="([\w-]+)"/g)) dansModales.add(m[1]);
+  }
+  verifie('les actions des modales sont traitées',
+    [...dansModales].filter(a => !traitees.has(a)));
 
   // variables CSS
   const vars = new Set();

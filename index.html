@@ -305,24 +305,6 @@
     <div class="modal__body">
       <div class="acct" data-acct></div>
 
-      <label class="field">
-        <span class="field__label">Adresse de l&rsquo;API (ton VPS)</span>
-        <span class="field__wrap"><i data-ico="server"></i>
-          <input type="url" id="serverUrl" placeholder="https://api.mondomaine.fr" autocomplete="off">
-        </span>
-      </label>
-      <p class="note"><i data-ico="info"></i> Doit être en <b>https://</b> — GitHub Pages bloque les appels non sécurisés.</p>
-      <p class="note"><i data-ico="server"></i>
-        <span>Origine de cette page : <code data-origine>—</code><br>
-        C&rsquo;est exactement la valeur attendue par <b>ALLOWED_ORIGINS</b> sur le VPS.</span>
-      </p>
-      <div class="btnrow">
-        <button class="btn btn--soft btn--sm" data-action="test-server">Tester la connexion</button>
-        <button class="btn btn--soft btn--sm" data-action="save-server">Enregistrer</button>
-      </div>
-      <p class="form__error" data-server-msg hidden></p>
-
-      <hr class="hr">
       <h3 class="side-title">Données</h3>
       <div class="btnrow">
         <button class="btn btn--ghost btn--sm" data-action="export"><i data-ico="down"></i> Exporter (.json)</button>
@@ -331,6 +313,28 @@
       </div>
       <input type="file" id="importFile" accept="application/json,.json" hidden>
       <p class="note" data-storage-note></p>
+
+      <details class="avance">
+        <summary><i data-ico="server"></i> Réglages avancés — serveur</summary>
+        <div class="avance__corps">
+          <label class="field">
+            <span class="field__label">Adresse de l&rsquo;API (ton VPS)</span>
+            <span class="field__wrap"><i data-ico="server"></i>
+              <input type="url" id="serverUrl" placeholder="https://api.mondomaine.fr" autocomplete="off">
+            </span>
+          </label>
+          <p class="note"><i data-ico="info"></i> Doit être en <b>https://</b> — GitHub Pages bloque les appels non sécurisés.</p>
+          <p class="note"><i data-ico="server"></i>
+            <span>Origine de cette page : <code data-origine>—</code><br>
+            C&rsquo;est la valeur attendue par <b>ALLOWED_ORIGINS</b> sur le VPS.</span>
+          </p>
+          <div class="btnrow">
+            <button class="btn btn--soft btn--sm" data-action="test-server">Tester la connexion</button>
+            <button class="btn btn--soft btn--sm" data-action="save-server">Enregistrer</button>
+          </div>
+          <p class="form__error" data-server-msg hidden></p>
+        </div>
+      </details>
     </div>
     <footer class="modal__foot">
       <button class="btn btn--danger-ghost" data-action="logout" hidden><i data-ico="out"></i> Se déconnecter</button>

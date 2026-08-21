@@ -236,15 +236,24 @@ réimportable. Utile avant une manipulation risquée.
 
 ## Tests
 
-118 tests couvrent le calcul des dates, les récurrences, le rendu des vues,
-l'échappement HTML, l'API, l'isolation entre comptes et la résolution de conflits.
+154 tests couvrent le calcul des dates, les récurrences, le rendu des vues,
+l'échappement HTML, l'API, l'isolation entre comptes, la résolution de conflits
+et les pièges silencieux du navigateur.
 
 ```bash
-node test/run.js        # tout
-node test/store.test.js # dates, récurrences, stockage      (32)
-node test/render.test.js# rendu des 4 vues, sécurité XSS    (27)
-node server/test/e2e.js # API de bout en bout               (59)
+node test/run.js             # tout
+node test/store.test.js      # dates, récurrences, stockage       (32)
+node test/render.test.js     # rendu des 4 vues, sécurité XSS     (27)
+node test/lint.test.js       # pièges du navigateur                (9)
+node server/test/migration.js# migration de la base               (14)
+node server/test/e2e.js      # API de bout en bout                (72)
 ```
+
+`lint.test.js` attrape une famille d'erreurs que rien d'autre ne voit :
+`form.title` ne renvoie pas le champ nommé « title » mais l'attribut HTML du
+formulaire, et une action déléguée à `#app` n'atteint jamais les modales, qui
+vivent en dehors. Dans les deux cas la page se charge sans erreur visible et
+les boutons restent inertes.
 
 Node.js 24+ est requis pour les lancer (pas pour utiliser le site).
 

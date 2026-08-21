@@ -44,6 +44,7 @@
     Api.load();
     majLibelleServeur();
     brancherGlobal();
+    brancherActions();   // toutes les [data-action], y compris dans les modales
     brancherModales();   // les modales servent aussi depuis l'écran de connexion
     brancherClavier();
 
@@ -99,26 +100,11 @@
     authBranche = true;
     var ecran = document.getElementById('authScreen');
 
+    // Les [data-action] sont traités globalement (voir brancherActions) :
+    // ici, seuls les onglets propres à cet écran.
     ecran.addEventListener('click', function (e) {
       var onglet = e.target.closest('[data-tab]');
       if (onglet) return basculerOnglet(onglet.dataset.tab);
-
-      var oeil = e.target.closest('[data-action="peek"]');
-      if (oeil) {
-        var champ = oeil.parentNode.querySelector('input');
-        var cache = champ.type === 'password';
-        champ.type = cache ? 'text' : 'password';
-        oeil.querySelector('i').dataset.ico = cache ? 'eye-off' : 'eye';
-        Icons.render(oeil);
-        return;
-      }
-
-      if (e.target.closest('[data-action="theme"]')) return themeBascule();
-      if (e.target.closest('[data-action="offline"]')) return modeLocal();
-      if (e.target.closest('[data-action="server-config"]')) {
-        ouvrirCompte();
-        return;
-      }
     });
 
     // Jauge de robustesse du mot de passe
@@ -141,6 +127,16 @@
       if (f.elements.password.value.length < 8) return erreurForm(f, 'Le mot de passe doit faire au moins 8 caractères.');
       soumettre(f, Api.register(pseudo, f.elements.password.value), 'Création…');
     });
+  }
+
+  /** Affiche ou masque le mot de passe du champ voisin */
+  function basculerVisibilite(bouton) {
+    var champ = bouton.parentNode.querySelector('input');
+    if (!champ) return;
+    var cache = champ.type === 'password';
+    champ.type = cache ? 'text' : 'password';
+    var ico = bouton.querySelector('i');
+    if (ico) { ico.dataset.ico = cache ? 'eye-off' : 'eye'; Icons.render(bouton); }
   }
 
   function basculerOnglet(nom) {
@@ -253,9 +249,8 @@
 
     app.addEventListener('click', function (e) {
       var t = e.target;
-
-      var action = t.closest('[data-action]');
-      if (action) return executer(action.dataset.action, action, e);
+      // [data-action] est traité par brancherActions, au niveau du document
+      if (t.closest('[data-action]')) return;
 
       var vue = t.closest('[data-view]');
       if (vue) return Cal.setVue(vue.dataset.view);
@@ -333,8 +328,25 @@
     });
   }
 
+  /**
+   * Délégation des actions au niveau du DOCUMENT.
+   * Indispensable : les modales sont hors de #app, donc un écouteur
+   * posé sur #app ne les voit jamais.
+   */
+  function brancherActions() {
+    document.addEventListener('click', function (e) {
+      var el = e.target.closest('[data-action]');
+      if (el) executer(el.dataset.action, el, e);
+    });
+  }
+
   function executer(nom, el, e) {
     switch (nom) {
+      /* ── Écran de connexion ── */
+      case 'peek':          return basculerVisibilite(el);
+      case 'offline':       return modeLocal();
+      case 'server-config': return ouvrirCompte();
+
       case 'prev':   return Cal.pas(-1);
       case 'next':   return Cal.pas(1);
       case 'today':  return Cal.aller(D.today());
