@@ -77,11 +77,25 @@ const ev = (id, extra = {}) => ({
   /* ─────────── CORS ─────────── */
   console.log('\n── CORS ──');
   {
-    const bon = await appel('/api/health', { origine: 'https://exemple.github.io' });
+    // /api/me applique la politique stricte
+    const bon = await appel('/api/me', { origine: 'https://exemple.github.io' });
     eq('origine autorisée', bon.entetes.get('access-control-allow-origin'), 'https://exemple.github.io');
 
-    const mauvais = await appel('/api/health', { origine: 'https://pirate.example' });
+    const mauvais = await appel('/api/me', { origine: 'https://pirate.example' });
     eq('origine refusée : aucun en-tête', mauvais.entetes.get('access-control-allow-origin'), null);
+
+    // /api/health est volontairement public, pour permettre le diagnostic
+    const sante = await appel('/api/health', { origine: 'https://pirate.example' });
+    eq('health lisible par tous', sante.entetes.get('access-control-allow-origin'), '*');
+    eq('health rapporte l’origine vue', sante.data.origineVue, 'https://pirate.example');
+    eq('health signale le refus', sante.data.origineAutorisee, false);
+    eq('health compte les origines', sante.data.originesConfigurees, 1);
+
+    const santeOk = await appel('/api/health', { origine: 'https://exemple.github.io' });
+    eq('health confirme une origine valide', santeOk.data.origineAutorisee, true);
+
+    const santeSansOrigine = await appel('/api/health');
+    eq('health sans origine', santeSansOrigine.data.origineAutorisee, null);
 
     const pre = await fetch(BASE + '/api/sync', {
       method: 'OPTIONS',

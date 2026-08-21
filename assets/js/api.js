@@ -227,22 +227,45 @@
   function diagnostiquer() {
     var origine = Api.origine();
 
-    return fetch(Api.base + '/api/health', { mode: 'no-cors', cache: 'no-store' })
-      .then(function () {
-        if (!origine) {
-          return 'Le serveur répond, mais cette page est ouverte en fichier local. ' +
-                 'Le navigateur envoie « Origin: null », que le serveur refuse. ' +
-                 'Ouvre le site par son adresse https:// (GitHub Pages).';
+    // 1) /api/health est lisible par toutes les origines : on peut donc
+    //    lire ce que le serveur voit réellement de nous.
+    return fetch(Api.base + '/api/health', { cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d || d.ok !== true) throw new Error('réponse inattendue');
+
+        if (typeof d.origineAutorisee === 'undefined') {
+          return 'Le serveur répond, mais il fait tourner une version antérieure de l’API.\n' +
+                 'Mets-la à jour sur le VPS :\n' +
+                 'cd /root/calendrier && git pull\n' +
+                 'bash server/deploy/install.sh <domaine> ' + (origine || '<origine>');
         }
-        return 'Le serveur répond mais refuse ce site (CORS).\n' +
-               'Sur le VPS, dans /opt/calendrier/server/.env :\n' +
-               'ALLOWED_ORIGINS=' + origine + '\n' +
-               'puis : systemctl restart calendrier-api';
+        if (d.origineAutorisee === false) {
+          return 'Le serveur voit ce site comme « ' + (d.origineVue || '(aucune origine)') + ' »\n' +
+                 'et ne l’autorise pas (' + d.originesConfigurees + ' origine(s) déclarée(s)).\n' +
+                 'Sur le VPS, dans /opt/calendrier/server/.env :\n' +
+                 'ALLOWED_ORIGINS=' + (d.origineVue || origine) + '\n' +
+                 'puis : systemctl restart calendrier-api';
+        }
+        if (d.origineAutorisee === true) {
+          return 'Le serveur autorise bien ce site, mais la requête a tout de même échoué.\n' +
+                 'Regarde la console (F12) et /var/log/nginx/calendrier-error.log';
+        }
+        return 'Le serveur n’a vu aucune origine — page ouverte en fichier local ?\n' +
+               'Ouvre le site par son adresse https://.';
       })
       .catch(function () {
-        return 'Serveur injoignable à l’adresse ' + Api.base + '.\n' +
-               'Vérifie le DNS, le certificat HTTPS, et que le service tourne ' +
-               '(systemctl status calendrier-api).';
+        // 2) L'API n'a pas répondu. Quelque chose d'autre répond-il ?
+        return fetch(Api.base + '/api/health', { mode: 'no-cors', cache: 'no-store' })
+          .then(function () {
+            return 'Quelque chose répond à l’adresse ' + Api.base + ', mais ce n’est pas l’API.\n' +
+                   'Le plus souvent une erreur 502 de Nginx : proxy_pass sur le mauvais port.\n' +
+                   'Sur le VPS : curl -i ' + Api.base + '/api/health';
+          })
+          .catch(function () {
+            return 'Serveur injoignable à l’adresse ' + Api.base + '.\n' +
+                   'Vérifie le DNS, le certificat HTTPS, et systemctl status calendrier-api.';
+          });
       });
   }
 

@@ -51,13 +51,24 @@ const routes = [];
 const on = (methode, chemin, gestionnaire, options = {}) =>
   routes.push({ methode, chemin, gestionnaire, ...options });
 
-/* ── Santé ── */
-on('GET', '/api/health', () => ({
-  ok: true,
-  version: VERSION,
-  inscriptions: INSCRIPTIONS_OUVERTES,
-  heure: Date.now()
-}));
+/* ── Santé ──
+   Volontairement lisible depuis n'importe quelle origine (voir le bloc
+   CORS plus bas) : c'est le seul moyen pour le navigateur de distinguer
+   « l'API refuse mon site » de « ce n'est pas l'API qui a répondu ».
+   Aucune donnée personnelle n'y transite. */
+on('GET', '/api/health', (req) => {
+  const vue = req.headers.origin ? req.headers.origin.replace(/\/+$/, '') : null;
+  return {
+    ok: true,
+    version: VERSION,
+    inscriptions: INSCRIPTIONS_OUVERTES,
+    // Diagnostic : ce que le serveur voit, et ce qu'il accepte
+    origineVue: vue,
+    origineAutorisee: vue === null ? null : (ORIGINES.includes('*') || ORIGINES.includes(vue)),
+    originesConfigurees: ORIGINES.length,
+    heure: Date.now()
+  };
+});
 
 /* ── Inscription ── */
 on('POST', '/api/auth/register', (req) => {
@@ -276,7 +287,13 @@ const serveur = http.createServer(async (req, res) => {
 
   /* ── CORS ── */
   const origine = req.headers.origin;
-  if (origine) {
+
+  // /api/health est un point de diagnostic public : toujours lisible.
+  // Sans cela, un site mal configuré ne peut pas savoir POURQUOI il est
+  // rejeté — le navigateur masque la réponse avant qu'on puisse la lire.
+  if (chemin === '/api/health') {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+  } else if (origine) {
     const nettoyee = origine.replace(/\/+$/, '');
     if (ORIGINES.includes('*')) {
       res.setHeader('Access-Control-Allow-Origin', '*');
