@@ -52,7 +52,7 @@
     try { mode = localStorage.getItem(K_MODE); } catch (e) {}
 
     if (Api.authed()) {
-      ouvrirApp(Api.user.id, Api.user);
+      ouvrirApp(Api.calendrier || Api.user.id, Api.user);
       // vérifie la session en arrière-plan, sans bloquer
       Api.me().then(function () { synchroniser(true); })
              .catch(function (e) {
@@ -88,9 +88,95 @@
     var av = document.querySelector('[data-avatar]');
     if (av) av.textContent = utilisateur ? UI.initiales(utilisateur.pseudo) : '·';
     majEtatSync();
+    majCalendriers();
+    majDroits();
 
     if (!App.pret) { brancherApp(); App.pret = true; }
     Icons.render();
+  }
+
+  /* ═════════════════ CALENDRIERS PARTAGÉS ═════════════════ */
+
+  /** Remplit le sélecteur de la barre latérale */
+  function majCalendriers() {
+    var zone = document.querySelector('[data-calpicker]');
+    var select = document.getElementById('calendrierActif');
+    var role = document.querySelector('[data-cal-role]');
+    if (!zone || !select) return;
+
+    var liste = Api.calendriers || [];
+    // Inutile d'afficher un sélecteur pour un seul calendrier
+    zone.hidden = !Api.authed() || liste.length < 2;
+
+    var h = '';
+    for (var i = 0; i < liste.length; i++) {
+      var c = liste[i];
+      var nom = c.role === 'proprietaire' ? 'Mon calendrier' : 'Calendrier de ' + c.pseudo;
+      h += '<option value="' + UI.esc(c.id) + '"' +
+           (c.id === Api.calendrier ? ' selected' : '') + '>' + UI.esc(nom) + '</option>';
+    }
+    select.innerHTML = h;
+
+    var actuel = Api.calendrierActuel();
+    if (role) {
+      if (actuel && actuel.role !== 'proprietaire') {
+        role.hidden = false;
+        role.innerHTML = '<i data-ico="users"></i> Partagé par <b>' + UI.esc(actuel.pseudo) + '</b> · ' +
+                         (actuel.role === 'lecture' ? 'lecture seule' : 'modification autorisée');
+        Icons.render(role);
+      } else {
+        role.hidden = true;
+      }
+    }
+  }
+
+  /** Bascule vers un autre calendrier */
+  function changerCalendrier(id) {
+    if (!id || id === Api.calendrier) return;
+
+    function basculer() {
+      Api.setCalendrier(id);
+      Store.open(id);
+      Cal.render();
+      majCalendriers();
+      majDroits();
+      majEtatSync();
+      var c = Api.calendrierActuel();
+      UI.info(c && c.role === 'proprietaire'
+        ? 'Ton calendrier'
+        : 'Calendrier de ' + (c ? c.pseudo : '?'));
+      synchroniser(true);
+    }
+
+    // On termine la synchro en cours AVANT de changer d'espace de stockage,
+    // sinon sa réponse s'écrirait dans le mauvais calendrier.
+    var p = synchroniser(true);
+    if (p && p.then) p.then(basculer, basculer);
+    else basculer();
+  }
+
+  /** Adapte l'interface au droit d'écriture sur le calendrier affiché */
+  function majDroits() {
+    var peut = Api.peutEcrire();
+    document.body.classList.toggle('is-readonly', !peut);
+
+    var creer = document.querySelectorAll('[data-action="new-event"]');
+    for (var i = 0; i < creer.length; i++) creer[i].hidden = !peut;
+
+    // Le bandeau se place entre la barre du haut et la mise en page,
+    // qui est en colonne : l'insérer dans .layout casserait la grille.
+    var layout = document.querySelector('.layout');
+    var bandeau = document.querySelector('[data-readonly-banner]');
+    if (!peut && !bandeau && layout && layout.parentNode) {
+      bandeau = document.createElement('div');
+      bandeau.className = 'readonly';
+      bandeau.setAttribute('data-readonly-banner', '');
+      bandeau.innerHTML = '<i data-ico="eye"></i> Lecture seule — tu ne peux pas modifier ce calendrier';
+      layout.parentNode.insertBefore(bandeau, layout);
+      Icons.render(bandeau);
+    } else if (peut && bandeau) {
+      bandeau.remove();
+    }
   }
 
   /* ═════════════════ ÉCRAN DE CONNEXION ═════════════════ */
@@ -268,13 +354,18 @@
       var coche = t.closest('[data-toggle]');
       if (coche) {
         e.stopPropagation();
+        if (!Api.peutEcrire()) return UI.err('Ce calendrier est en lecture seule.');
         Store.toggleDone(coche.dataset.toggle);
         Cal.render(); planifierSync();
         return;
       }
 
       var ajout = t.closest('[data-add]');
-      if (ajout) { e.stopPropagation(); return ouvrirEvenement(null, ajout.dataset.add); }
+      if (ajout) {
+        e.stopPropagation();
+        if (!Api.peutEcrire()) return UI.err('Ce calendrier est en lecture seule.');
+        return ouvrirEvenement(null, ajout.dataset.add);
+      }
 
       var plus = t.closest('[data-more]');
       if (plus) { e.stopPropagation(); return ouvrirJour(plus.dataset.more); }
@@ -284,6 +375,7 @@
 
       var creneau = t.closest('[data-slot]');
       if (creneau) {
+        if (!Api.peutEcrire()) return;
         var h = +creneau.dataset.hour;
         return ouvrirEvenement(null, creneau.dataset.slot, (h < 10 ? '0' : '') + h + ':00');
       }
@@ -300,6 +392,10 @@
         Cal.render();
       });
     }
+
+    // Sélecteur de calendrier
+    var selCal = document.getElementById('calendrierActif');
+    if (selCal) selCal.addEventListener('change', function (e) { changerCalendrier(e.target.value); });
 
     // Recherche
     var recherche = document.getElementById('searchInput');
@@ -361,6 +457,13 @@
       case 'delete-event':  return supprimerEvenement();
       case 'logout': return deconnexion(false);
       case 'signin': return retourConnexion();
+
+      /* ── Partage ── */
+      case 'inviter':      return creerInvitation();
+      case 'rejoindre':    return rejoindreCalendrier();
+      case 'copier-code':  return copierCode();
+      case 'retirer':      return retirerAcces(el.dataset.cal, el.dataset.membre, el.dataset.nom);
+      case 'annuler-invit':return annulerInvitation(el.dataset.code);
       case 'save-server':   return enregistrerServeur();
       case 'test-server':   return testerServeur();
       case 'export':        return exporterJson();
@@ -376,6 +479,7 @@
         // clic sur une case du mois : ouvre le détail si le jour a des événements
         var n = Store.onDay(ymd, Cal.filtres).length;
         if (n) return ouvrirJour(ymd);
+        if (!Api.peutEcrire()) return;      // jour vide, calendrier en lecture seule
         return ouvrirEvenement(null, ymd);
       }
       Cal.miniAncre = ymd;
@@ -535,8 +639,16 @@
     }
 
     document.querySelector('[data-times]').hidden = form.elements.allDay.checked;
+
+    // Calendrier en lecture seule : consultation possible, modification non
+    var peut = Api.peutEcrire();
+    for (var k = 0; k < form.elements.length; k++) form.elements[k].disabled = !peut;
+    var enregistrer = document.querySelector('#eventModal button[type=submit]');
+    if (enregistrer) enregistrer.hidden = !peut;
+    if (!peut) document.querySelector('[data-action="delete-event"]').hidden = true;
+
     UI.open('eventModal');
-    setTimeout(function () { form.elements.title.focus(); }, 80);
+    if (peut) setTimeout(function () { form.elements.title.focus(); }, 80);
   }
 
   function prochainCreneau() {
@@ -546,6 +658,7 @@
   }
 
   function enregistrerEvenement(form) {
+    if (!Api.peutEcrire()) return UI.err('Ce calendrier est en lecture seule.');
     if (!form.elements.title.value.trim()) {
       form.elements.title.focus();
       return UI.err('Donne un titre à ton événement.');
@@ -614,6 +727,8 @@
   function ouvrirJour(ymd) {
     App.jourOuvert = ymd;
     Cal.selection = ymd;
+    var ajouter = document.querySelector('[data-action="new-event-here"]');
+    if (ajouter) ajouter.hidden = !Api.peutEcrire();
     document.querySelector('[data-day-title]').textContent = D.longDate(ymd);
 
     var liste = Store.onDay(ymd, Cal.filtres);
@@ -777,6 +892,10 @@
     var msg = document.querySelector('[data-server-msg]');
     if (msg) msg.hidden = true;
 
+    var boiteInvite = document.querySelector('[data-invite]');
+    if (boiteInvite) boiteInvite.hidden = true;
+    majPartage();
+
     UI.open('accountModal');
     Icons.render(document.getElementById('accountModal'));
   }
@@ -819,6 +938,168 @@
     if (el) el.textContent = Api.base ? Api.base.replace(/^https?:\/\//, '') : 'non configuré';
   }
 
+  /* ═════════════════ PARTAGE ═════════════════ */
+
+  /** Affiche l'état du partage dans la fenêtre « Compte & sauvegarde » */
+  function majPartage() {
+    var etat = document.querySelector('[data-partage-etat]');
+    var actions = document.querySelector('[data-partage-actions]');
+    var membres = document.querySelector('[data-membres]');
+    var invite = document.querySelector('[data-invite]');
+    if (!etat || !actions || !membres) return;
+
+    if (!Api.authed()) {
+      etat.textContent = 'Connecte-toi pour partager ton calendrier.';
+      etat.hidden = false;
+      actions.hidden = true;
+      membres.innerHTML = '';
+      if (invite) invite.hidden = true;
+      return;
+    }
+
+    etat.hidden = true;
+    actions.hidden = false;
+    membres.innerHTML = '<li class="membres__vide">Chargement…</li>';
+
+    Api.partage().then(function (d) {
+      var h = '';
+
+      // Personnes ayant accès à MON calendrier
+      (d.membres || []).forEach(function (m) {
+        h += '<li>' +
+               '<span class="membres__av">' + UI.esc(UI.initiales(m.pseudo)) + '</span>' +
+               '<span><span class="membres__n">' + UI.esc(m.pseudo) + '</span>' +
+               '<span class="membres__r">' + (m.role === 'lecture' ? 'lecture seule' : 'peut modifier') + '</span></span>' +
+               '<button class="membres__x" data-action="retirer" data-cal="' + UI.esc(Api.user.id) + '" ' +
+                 'data-membre="' + UI.esc(m.id) + '" data-nom="' + UI.esc(m.pseudo) + '" ' +
+                 'title="Retirer l’accès"><i data-ico="x"></i></button>' +
+             '</li>';
+      });
+
+      // Invitations en attente
+      (d.invitations || []).forEach(function (inv) {
+        var jours = Math.max(0, Math.round((inv.expires_at - Date.now()) / 86400000));
+        h += '<li>' +
+               '<span class="membres__av">?</span>' +
+               '<span><span class="membres__n">' + UI.esc(inv.code) + '</span>' +
+               '<span class="membres__r">en attente · expire dans ' + jours + ' j</span></span>' +
+               '<button class="membres__x" data-action="annuler-invit" data-code="' + UI.esc(inv.code) + '" ' +
+                 'title="Annuler l’invitation"><i data-ico="x"></i></button>' +
+             '</li>';
+      });
+
+      // Calendriers auxquels J'AI accès
+      (d.calendriers || []).forEach(function (c) {
+        if (c.role === 'proprietaire') return;
+        h += '<li>' +
+               '<span class="membres__av">' + UI.esc(UI.initiales(c.pseudo)) + '</span>' +
+               '<span><span class="membres__n">Calendrier de ' + UI.esc(c.pseudo) + '</span>' +
+               '<span class="membres__r">' + (c.role === 'lecture' ? 'lecture seule' : 'tu peux modifier') + '</span></span>' +
+               '<button class="membres__x" data-action="retirer" data-cal="' + UI.esc(c.id) + '" ' +
+                 'data-membre="' + UI.esc(Api.user.id) + '" data-nom="' + UI.esc(c.pseudo) + '" ' +
+                 'title="Quitter ce calendrier"><i data-ico="out"></i></button>' +
+             '</li>';
+      });
+
+      membres.innerHTML = h || '<li class="membres__vide">Personne ne partage ton calendrier pour l’instant.</li>';
+      Icons.render(membres);
+      majCalendriers();
+    }).catch(function (e) {
+      membres.innerHTML = '<li class="membres__vide">' + UI.esc(e.message) + '</li>';
+    });
+  }
+
+  function creerInvitation() {
+    if (!Api.authed()) return UI.err('Connecte-toi d’abord.');
+
+    UI.confirm({
+      titre: 'Inviter quelqu’un',
+      texte: 'Quel droit veux-tu accorder sur ton calendrier ?',
+      actions: [
+        { id: 'ecriture', label: 'Peut modifier', style: 'btn--primary' },
+        { id: 'lecture', label: 'Lecture seule', style: 'btn--soft' }
+      ]
+    }).then(function (role) {
+      if (!role) return;
+      return Api.inviter(role).then(function (d) {
+        var boite = document.querySelector('[data-invite]');
+        var code = document.querySelector('[data-invite-code]');
+        var hint = document.querySelector('[data-invite-hint]');
+        if (code) code.textContent = d.code;
+        if (hint) {
+          hint.textContent = 'Droit : ' + (d.role === 'lecture' ? 'lecture seule' : 'modification') +
+            '. Valable 7 jours, utilisable une seule fois. La personne doit avoir un compte, ' +
+            'puis saisir ce code via « Rejoindre avec un code ».';
+        }
+        if (boite) boite.hidden = false;
+        App.codeInvite = d.code;
+        UI.ok('Code d’invitation créé');
+        majPartage();
+      });
+    }).catch(function (e) { UI.err(e.message); });
+  }
+
+  function copierCode() {
+    var code = App.codeInvite || (document.querySelector('[data-invite-code]') || {}).textContent;
+    if (!code || code === '—') return;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(code).then(
+        function () { UI.ok('Code copié'); },
+        function () { UI.info('Copie impossible — sélectionne le code à la main.'); }
+      );
+    } else {
+      UI.info('Sélectionne le code pour le copier.');
+    }
+  }
+
+  function rejoindreCalendrier() {
+    if (!Api.authed()) return UI.err('Connecte-toi d’abord.');
+
+    UI.prompt({
+      titre: 'Rejoindre un calendrier',
+      texte: 'Saisis le code d’invitation qu’on t’a transmis.',
+      placeholder: 'XXXX-XXXX',
+      valider: 'Rejoindre'
+    }).then(function (code) {
+      if (!code) return;
+      return Api.rejoindre(code.trim().toUpperCase()).then(function (d) {
+        UI.ok('Tu as rejoint le calendrier de ' + d.calendrier.pseudo);
+        majPartage();
+        majCalendriers();
+        changerCalendrier(d.calendrier.id);
+      });
+    }).catch(function (e) { UI.err(e.message); });
+  }
+
+  function retirerAcces(calendrierId, membreId, nom) {
+    var moiMeme = membreId === (Api.user && Api.user.id);
+    UI.confirm({
+      titre: moiMeme ? 'Quitter ce calendrier ?' : 'Retirer l’accès de ' + nom + ' ?',
+      texte: moiMeme
+        ? 'Tu n’auras plus accès au calendrier de ' + nom + '. Son propriétaire pourra t’inviter à nouveau.'
+        : nom + ' ne pourra plus voir ni modifier ton calendrier.',
+      actions: [{ id: 'ok', label: moiMeme ? 'Quitter' : 'Retirer', style: 'btn--primary' }]
+    }).then(function (r) {
+      if (r !== 'ok') return;
+      return Api.retirer(calendrierId, membreId).then(function () {
+        UI.ok(moiMeme ? 'Calendrier quitté' : 'Accès retiré');
+        // Si on quittait le calendrier affiché, on revient au sien
+        if (Api.calendrier === calendrierId && moiMeme) changerCalendrier(Api.user.id);
+        majPartage();
+        majCalendriers();
+      });
+    }).catch(function (e) { UI.err(e.message); });
+  }
+
+  function annulerInvitation(code) {
+    Api.annulerInvitation(code).then(function () {
+      UI.ok('Invitation annulée');
+      var boite = document.querySelector('[data-invite]');
+      if (boite && App.codeInvite === code) { boite.hidden = true; App.codeInvite = null; }
+      majPartage();
+    }).catch(function (e) { UI.err(e.message); });
+  }
+
   /**
    * Quitte le mode local pour revenir à l'écran de connexion.
    * Les événements locaux sont CONSERVÉS : à la première connexion,
@@ -849,7 +1130,7 @@
     }).then(function (r) {
       if (r !== 'ok') return;
       synchroniser(true).then(function () {
-        Store.clear();
+        Store.clearAll();      // y compris les calendriers partagés en cache
         Api.logout().then(fin, fin);
       });
     });

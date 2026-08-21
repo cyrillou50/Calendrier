@@ -687,6 +687,63 @@ textarea:focus { border-color: var(--accent); box-shadow: var(--ring); }
 .swatch:hover { border-color: var(--line-2); color: var(--text); }
 .swatch.is-active { border-color: var(--_c); color: var(--text); background: color-mix(in srgb, var(--_c) 15%, transparent); }
 
+/* ── Sélecteur de calendrier (barre latérale) ── */
+.calpicker { padding-bottom: 4px; border-bottom: 1px solid var(--line); margin-bottom: 2px; }
+.calpicker .field__wrap { padding: 0 10px; }
+.calpicker select { padding: 8px 0; font-size: 13px; font-weight: 500; }
+.calpicker__role {
+  display: flex; align-items: center; gap: 6px; margin-top: 7px;
+  font-size: 11.5px; color: var(--text-3);
+}
+.calpicker__role b { color: var(--accent-2); font-weight: 600; }
+
+/* Bandeau lecture seule */
+.readonly {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 7px 14px; font-size: 12.5px; font-weight: 500;
+  background: rgba(245, 158, 11, .12); color: var(--warn);
+  border-bottom: 1px solid rgba(245, 158, 11, .25);
+}
+
+/* ── Partage ── */
+.membres { display: grid; gap: 6px; margin-top: 12px; }
+.membres li {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 11px; border-radius: 10px;
+  background: var(--surface-2); border: 1px solid var(--line);
+}
+.membres__av {
+  width: 30px; height: 30px; border-radius: 50%; flex: 0 0 auto;
+  background: var(--grad); color: #fff; font-size: 12px; font-weight: 700;
+  display: grid; place-items: center;
+}
+.membres__n { font-size: 13px; font-weight: 600; }
+.membres__r { font-size: 11px; color: var(--text-3); }
+.membres__x {
+  margin-left: auto; width: 28px; height: 28px; border-radius: 8px;
+  display: grid; place-items: center; color: var(--text-3); font-size: 14px;
+  transition: background .15s, color .15s;
+}
+.membres__x:hover { background: rgba(244, 63, 94, .14); color: var(--danger); }
+.membres__vide { font-size: 12.5px; color: var(--text-3); padding: 10px 2px; }
+
+.invite {
+  margin-top: 12px; padding: 14px; border-radius: var(--r);
+  background: var(--accent-soft); border: 1px solid rgba(108, 92, 231, .3);
+  animation: rise .25s var(--ease);
+}
+.invite__label { font-size: 12.5px; color: var(--text-2); margin-bottom: 9px; }
+.invite__code { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.invite__code code {
+  flex: 1; min-width: 130px; text-align: center;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 19px; font-weight: 700; letter-spacing: .12em;
+  padding: 9px 12px; border-radius: 9px;
+  background: var(--surface); border: 1px solid var(--line-2); color: var(--text);
+  user-select: all;
+}
+.invite__hint { font-size: 11.5px; color: var(--text-3); margin-top: 9px; line-height: 1.5; }
+
 /* Bloc repliable « réglages avancés » */
 .avance { border-top: 1px solid var(--line); padding-top: 14px; margin-top: 2px; }
 .avance > summary {

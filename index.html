@@ -158,6 +158,16 @@
 
   <div class="layout">
     <aside class="sidebar" data-sidebar>
+      <div class="calpicker" data-calpicker hidden>
+        <label class="field">
+          <span class="field__label">Calendrier</span>
+          <span class="field__wrap"><i data-ico="users"></i>
+            <select id="calendrierActif"></select>
+          </span>
+        </label>
+        <p class="calpicker__role" data-cal-role hidden></p>
+      </div>
+
       <div class="minical" data-minical></div>
 
       <section class="side-block">
@@ -313,6 +323,27 @@
       </div>
       <input type="file" id="importFile" accept="application/json,.json" hidden>
       <p class="note" data-storage-note></p>
+
+      <hr class="hr">
+      <h3 class="side-title">Partage</h3>
+      <div data-partage-zone>
+        <p class="note" data-partage-etat>Connecte-toi pour partager ton calendrier.</p>
+
+        <div class="btnrow" data-partage-actions hidden>
+          <button class="btn btn--soft btn--sm" data-action="inviter"><i data-ico="plus"></i> Inviter quelqu&rsquo;un</button>
+          <button class="btn btn--ghost btn--sm" data-action="rejoindre"><i data-ico="users"></i> Rejoindre avec un code</button>
+        </div>
+
+        <div class="invite" data-invite hidden>
+          <p class="invite__label">Transmets ce code à la personne :</p>
+          <div class="invite__code"><code data-invite-code>—</code>
+            <button class="btn btn--soft btn--sm" data-action="copier-code"><i data-ico="copy"></i> Copier</button>
+          </div>
+          <p class="invite__hint" data-invite-hint></p>
+        </div>
+
+        <ul class="membres" data-membres></ul>
+      </div>
 
       <details class="avance">
         <summary><i data-ico="server"></i> Réglages avancés — serveur</summary>

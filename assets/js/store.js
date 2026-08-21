@@ -375,6 +375,19 @@
       try { localStorage.removeItem(Store._lsKey()); } catch (e) {}
     },
 
+    /** Purge TOUS les calendriers mis en cache (déconnexion) */
+    clearAll: function () {
+      Store.events = {}; Store.lastSync = 0; Store.cursor = 0;
+      try {
+        var aSupprimer = [];
+        for (var i = 0; i < localStorage.length; i++) {
+          var k = localStorage.key(i);
+          if (k && k.indexOf(PREFIX) === 0) aSupprimer.push(k);
+        }
+        for (var j = 0; j < aSupprimer.length; j++) localStorage.removeItem(aSupprimer[j]);
+      } catch (e) {}
+    },
+
     /** Taille approximative occupée (Ko) */
     sizeKb: function () {
       try { return Math.round((localStorage.getItem(Store._lsKey()) || '').length / 1024 * 10) / 10; }

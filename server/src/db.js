@@ -73,12 +73,48 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS events_seq ON events(user_id, seq);
 
+  /* ── Partage ──
+     Un « calendrier » est identifié par l'id de son propriétaire :
+     events.user_id est en réalité l'identifiant du calendrier.
+     Cette table dit qui d'autre y a accès. Le propriétaire n'y
+     figure pas : son droit est implicite. */
+  CREATE TABLE IF NOT EXISTS partages (
+    calendrier_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id       TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role          TEXT NOT NULL DEFAULT 'ecriture',
+    created_at    INTEGER NOT NULL,
+    PRIMARY KEY (calendrier_id, user_id)
+  );
+  CREATE INDEX IF NOT EXISTS partages_user ON partages(user_id);
+
+  CREATE TABLE IF NOT EXISTS invitations (
+    code          TEXT PRIMARY KEY,
+    calendrier_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role          TEXT NOT NULL DEFAULT 'ecriture',
+    created_at    INTEGER NOT NULL,
+    expires_at    INTEGER NOT NULL,
+    used_by       TEXT,
+    used_at       INTEGER
+  );
+  CREATE INDEX IF NOT EXISTS invitations_cal ON invitations(calendrier_id);
+
   CREATE TABLE IF NOT EXISTS meta (
     k TEXT PRIMARY KEY,
     v INTEGER NOT NULL
   );
   INSERT OR IGNORE INTO meta (k, v) VALUES ('seq', 0);
 `);
+
+/* Purge des invitations périmées ou déjà consommées, une fois par jour */
+const purgeInvits = db.prepare(
+  'DELETE FROM invitations WHERE expires_at < ? OR (used_at IS NOT NULL AND used_at < ?)'
+);
+function purgerInvitations() {
+  const n = purgeInvits.run(Date.now(), Date.now() - 7 * 24 * 3600 * 1000).changes;
+  if (n) console.log(`[db] ${n} invitation(s) périmée(s) purgée(s)`);
+}
+purgerInvitations();
+setInterval(purgerInvitations, 24 * 3600 * 1000).unref();
 
 /* ─────────── Migration : « email » devient « pseudo » ───────────
    Les bases créées avant ce changement ont une colonne email.

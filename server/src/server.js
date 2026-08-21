@@ -25,6 +25,11 @@ const MAX_EVENEMENTS = Number(process.env.MAX_EVENTS_PER_USER || 20000);
 const TAILLE_MAX = 8 * 1024 * 1024;   // 8 Mo par requête
 const LOT_SYNC = 2000;                // événements renvoyés par appel
 
+// Limites de débit, par IP et par quart d'heure. Configurables pour
+// les tests automatisés, qui créent beaucoup de comptes d'affilée.
+const LIMITE_INSCRIPTION = Number(process.env.RATE_LIMIT_REGISTER || 10);
+const LIMITE_CONNEXION   = Number(process.env.RATE_LIMIT_LOGIN || 20);
+
 /* ═════════════════ Requêtes préparées ═════════════════ */
 const insUser      = db.prepare('INSERT INTO users (id, pseudo, pass, created_at) VALUES (?, ?, ?, ?)');
 const parPseudo    = db.prepare('SELECT * FROM users WHERE pseudo = ?');   // COLLATE NOCASE
@@ -92,8 +97,8 @@ on('POST', '/api/auth/register', (req) => {
   insUser.run(id, nom, A.hacher(password), Date.now());
 
   console.log(`[auth] nouveau compte : ${nom}`);
-  return { token: A.creerSession(id), user: { id, pseudo: nom } };
-}, { limite: [10, 15 * 60_000] });
+  return { token: A.creerSession(id), user: { id, pseudo: nom }, calendriers: calendriersDe(id) };
+}, { limite: [LIMITE_INSCRIPTION, 15 * 60_000] });
 
 /* ── Connexion ── */
 on('POST', '/api/auth/login', (req) => {
@@ -104,8 +109,8 @@ on('POST', '/api/auth/login', (req) => {
   if (!u || !A.verifier(String(password || ''), u.pass)) {
     throw httpErr(401, 'Pseudo ou mot de passe incorrect.');
   }
-  return { token: A.creerSession(u.id), user: { id: u.id, pseudo: u.pseudo } };
-}, { limite: [20, 15 * 60_000] });
+  return { token: A.creerSession(u.id), user: { id: u.id, pseudo: u.pseudo }, calendriers: calendriersDe(u.id) };
+}, { limite: [LIMITE_CONNEXION, 15 * 60_000] });
 
 on('POST', '/api/auth/logout', (req) => {
   A.detruireSession(req.jeton);
@@ -114,13 +119,150 @@ on('POST', '/api/auth/logout', (req) => {
 
 on('GET', '/api/me', (req) => ({
   user: req.user,
-  evenements: compteEvents.get(req.user.id).c
+  evenements: compteEvents.get(req.user.id).c,
+  calendriers: calendriersDe(req.user.id)
 }), { auth: true });
+
+/* ═════════════════ PARTAGE ═════════════════ */
+
+const selPartage    = db.prepare('SELECT role FROM partages WHERE calendrier_id = ? AND user_id = ?');
+const insPartage    = db.prepare('INSERT INTO partages (calendrier_id, user_id, role, created_at) VALUES (?, ?, ?, ?) ON CONFLICT(calendrier_id, user_id) DO UPDATE SET role = excluded.role');
+const delPartage    = db.prepare('DELETE FROM partages WHERE calendrier_id = ? AND user_id = ?');
+const membresDuCal  = db.prepare('SELECT p.user_id, p.role, p.created_at, u.pseudo FROM partages p JOIN users u ON u.id = p.user_id WHERE p.calendrier_id = ? ORDER BY u.pseudo');
+const calsPartages  = db.prepare('SELECT p.calendrier_id, p.role, u.pseudo FROM partages p JOIN users u ON u.id = p.calendrier_id WHERE p.user_id = ? ORDER BY u.pseudo');
+const insInvit      = db.prepare('INSERT INTO invitations (code, calendrier_id, role, created_at, expires_at) VALUES (?, ?, ?, ?, ?)');
+const selInvit      = db.prepare('SELECT * FROM invitations WHERE code = ?');
+const majInvit      = db.prepare('UPDATE invitations SET used_by = ?, used_at = ? WHERE code = ?');
+const invitsActives = db.prepare('SELECT code, role, expires_at FROM invitations WHERE calendrier_id = ? AND used_at IS NULL AND expires_at > ? ORDER BY created_at DESC');
+const delInvit      = db.prepare('DELETE FROM invitations WHERE code = ? AND calendrier_id = ?');
+const parId         = db.prepare('SELECT id, pseudo FROM users WHERE id = ?');
+
+const DUREE_INVITATION = 7 * 24 * 3600 * 1000;   // 7 jours
+
+/** Rôle d'un utilisateur sur un calendrier : 'proprietaire' | 'ecriture' | 'lecture' | null */
+function roleSur(userId, calendrierId) {
+  if (userId === calendrierId) return 'proprietaire';
+  const p = selPartage.get(calendrierId, userId);
+  return p ? p.role : null;
+}
+
+/** Tous les calendriers accessibles à un utilisateur, le sien en premier */
+function calendriersDe(userId) {
+  const moi = parId.get(userId);
+  const liste = [{ id: userId, pseudo: moi ? moi.pseudo : '', role: 'proprietaire' }];
+  for (const c of calsPartages.all(userId)) {
+    liste.push({ id: c.calendrier_id, pseudo: c.pseudo, role: c.role });
+  }
+  return liste;
+}
+
+/* Alphabet sans caractères ambigus : ni 0/O, ni 1/I/L */
+const ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+function codeInvitation() {
+  const octets = crypto.randomBytes(8);
+  let s = '';
+  for (let i = 0; i < 8; i++) s += ALPHABET[octets[i] % ALPHABET.length];
+  return s.slice(0, 4) + '-' + s.slice(4);
+}
+
+/* ── Créer une invitation ── */
+on('POST', '/api/partage/inviter', (req) => {
+  const role = req.body?.role === 'lecture' ? 'lecture' : 'ecriture';
+
+  // On n'invite que sur SON propre calendrier : pas de partage en cascade
+  const actives = invitsActives.all(req.user.id, Date.now());
+  if (actives.length >= 10) {
+    throw httpErr(429, 'Trop d’invitations en attente. Annule celles qui ne servent plus.');
+  }
+
+  let code = codeInvitation();
+  for (let i = 0; i < 5 && selInvit.get(code); i++) code = codeInvitation();
+  if (selInvit.get(code)) throw httpErr(500, 'Impossible de générer un code.');
+
+  const expire = Date.now() + DUREE_INVITATION;
+  insInvit.run(code, req.user.id, role, Date.now(), expire);
+  console.log(`[partage] ${req.user.pseudo} a créé une invitation (${role})`);
+  return { code, role, expire };
+}, { auth: true, limite: [20, 3600_000] });
+
+/* ── Rejoindre avec un code ── */
+on('POST', '/api/partage/rejoindre', (req) => {
+  const code = String(req.body?.code || '').trim().toUpperCase();
+  const inv = selInvit.get(code);
+
+  // Message unique : un code invalide et un code expiré se ressemblent
+  if (!inv || inv.used_at || inv.expires_at < Date.now()) {
+    throw httpErr(404, 'Code invalide, déjà utilisé ou expiré.');
+  }
+  if (inv.calendrier_id === req.user.id) {
+    throw httpErr(400, 'Ce calendrier est déjà le tien.');
+  }
+  if (selPartage.get(inv.calendrier_id, req.user.id)) {
+    throw httpErr(409, 'Tu as déjà accès à ce calendrier.');
+  }
+
+  transaction(() => {
+    insPartage.run(inv.calendrier_id, req.user.id, inv.role, Date.now());
+    majInvit.run(req.user.id, Date.now(), code);
+  });
+
+  const proprio = parId.get(inv.calendrier_id);
+  console.log(`[partage] ${req.user.pseudo} a rejoint le calendrier de ${proprio?.pseudo}`);
+  return {
+    calendrier: { id: inv.calendrier_id, pseudo: proprio ? proprio.pseudo : '?', role: inv.role },
+    calendriers: calendriersDe(req.user.id)
+  };
+}, { auth: true, limite: [30, 3600_000] });
+
+/* ── État du partage ── */
+on('GET', '/api/partage', (req) => ({
+  membres: membresDuCal.all(req.user.id).map(m => ({
+    id: m.user_id, pseudo: m.pseudo, role: m.role, depuis: m.created_at
+  })),
+  invitations: invitsActives.all(req.user.id, Date.now()),
+  calendriers: calendriersDe(req.user.id)
+}), { auth: true });
+
+/* ── Retirer un accès ──
+   Le propriétaire exclut un membre ; un invité peut se retirer lui-même. */
+on('POST', '/api/partage/retirer', (req) => {
+  const calendrierId = String(req.body?.calendrier || req.user.id);
+  const userId = String(req.body?.utilisateur || req.user.id);
+
+  const jeSuisProprio = calendrierId === req.user.id;
+  const jeMeRetire = userId === req.user.id;
+  if (!jeSuisProprio && !jeMeRetire) {
+    throw httpErr(403, 'Tu ne peux retirer que tes propres accès.');
+  }
+  if (jeSuisProprio && jeMeRetire) {
+    throw httpErr(400, 'Tu ne peux pas te retirer de ton propre calendrier.');
+  }
+
+  const n = delPartage.run(calendrierId, userId).changes;
+  if (!n) throw httpErr(404, 'Aucun accès à retirer.');
+  return { ok: true, calendriers: calendriersDe(req.user.id) };
+}, { auth: true });
+
+/* ── Annuler une invitation non utilisée ── */
+on('POST', '/api/partage/annuler', (req) => {
+  const code = String(req.body?.code || '').trim().toUpperCase();
+  const n = delInvit.run(code, req.user.id).changes;
+  if (!n) throw httpErr(404, 'Invitation introuvable.');
+  return { ok: true };
+}, { auth: true });
 
 /* ── Synchronisation bidirectionnelle ── */
 on('POST', '/api/sync', (req) => {
   const entrants = Array.isArray(req.body?.events) ? req.body.events : [];
   const curseur = Number(req.body?.cursor) || 0;
+
+  // Calendrier ciblé : le sien par défaut
+  const calId = String(req.body?.calendrier || req.user.id);
+  const role = roleSur(req.user.id, calId);
+  if (!role) throw httpErr(403, 'Tu n’as pas accès à ce calendrier.');
+  if (entrants.length && role === 'lecture') {
+    throw httpErr(403, 'Tu es en lecture seule sur ce calendrier.');
+  }
 
   if (entrants.length > 5000) {
     throw httpErr(400, 'Trop d’événements en une seule fois (5000 maximum).');
@@ -129,14 +271,14 @@ on('POST', '/api/sync', (req) => {
   let ecrits = 0, rejetes = 0;
 
   transaction(() => {
-    const dejaLa = compteEvents.get(req.user.id).c;
+    const dejaLa = compteEvents.get(calId).c;
     let ajouts = 0;
 
     for (const brut of entrants) {
-      const e = valider(brut, req.user.id);
+      const e = valider(brut, calId);
       if (!e) { rejetes++; continue; }
 
-      const actuel = selEvent.get(req.user.id, e.id);
+      const actuel = selEvent.get(calId, e.id);
       // Résolution des conflits : la version la plus récente l'emporte
       if (actuel && actuel.updated_at > e.updated_at) continue;
       if (!actuel && !e.deleted && dejaLa + ++ajouts > MAX_EVENEMENTS) {
@@ -150,7 +292,7 @@ on('POST', '/api/sync', (req) => {
     }
   });
 
-  const lignes = depuisSeq.all(req.user.id, curseur);
+  const lignes = depuisSeq.all(calId, curseur);
   const tronque = lignes.length === LOT_SYNC;
 
   return {
@@ -159,20 +301,26 @@ on('POST', '/api/sync', (req) => {
     cursor: tronque ? lignes[lignes.length - 1].seq : seqCourante(),
     events: lignes.map(versClient),
     more: tronque,
-    total: compteEvents.get(req.user.id).c,
+    total: compteEvents.get(calId).c,
+    calendrier: calId,
+    role,
     ecrits, rejetes
   };
 }, { auth: true });
 
 /* ── Export complet ── */
 on('GET', '/api/export', (req, res) => {
-  res.setHeader('Content-Disposition',
-    `attachment; filename="calendrier-${req.user.pseudo.replace(/[^\w.-]/g, '_')}.json"`);
+  const calId = String(req.query.get('calendrier') || req.user.id);
+  if (!roleSur(req.user.id, calId)) throw httpErr(403, 'Tu n’as pas accès à ce calendrier.');
+
+  const proprio = parId.get(calId);
+  const nom = (proprio ? proprio.pseudo : 'export').replace(/[^\w.-]/g, '_');
+  res.setHeader('Content-Disposition', `attachment; filename="calendrier-${nom}.json"`);
   return {
     app: 'calendrier', version: 1,
     exportedAt: new Date().toISOString(),
-    user: { pseudo: req.user.pseudo },
-    events: tousEvents.all(req.user.id).map(versClient)
+    calendrier: { id: calId, pseudo: proprio ? proprio.pseudo : null },
+    events: tousEvents.all(calId).map(versClient)
   };
 }, { auth: true });
 
@@ -284,6 +432,7 @@ function corps(req) {
 const serveur = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://interne');
   const chemin = url.pathname.replace(/\/+$/, '') || '/';
+  req.query = url.searchParams;
 
   /* ── CORS ── */
   const origine = req.headers.origin;

@@ -16,6 +16,8 @@
   var K_BASE  = 'calendrier:server';
   var K_TOKEN = 'calendrier:token';
   var K_USER  = 'calendrier:user';
+  var K_CAL   = 'calendrier:actif';    // calendrier sélectionné
+  var K_CALS  = 'calendrier:liste';    // calendriers accessibles
 
   function ls(k, v) {
     try {
@@ -31,13 +33,51 @@
     user: null,
 
     /* ── Configuration ── */
+    calendriers: [],   // [{ id, pseudo, role }]
+    calendrier: '',    // id du calendrier affiché
+
     load: function () {
       // Une adresse enregistrée par l'utilisateur prime toujours
       // sur celle inscrite dans le code.
       Api.base = ls(K_BASE) || SERVEUR_DEFAUT;
       Api.token = ls(K_TOKEN) || '';
       try { Api.user = JSON.parse(ls(K_USER) || 'null'); } catch (e) { Api.user = null; }
+      try { Api.calendriers = JSON.parse(ls(K_CALS) || '[]'); } catch (e) { Api.calendriers = []; }
+      Api.calendrier = ls(K_CAL) || (Api.user ? Api.user.id : '');
       return Api;
+    },
+
+    /* ── Calendriers ── */
+    setCalendriers: function (liste) {
+      Api.calendriers = Array.isArray(liste) ? liste : [];
+      ls(K_CALS, JSON.stringify(Api.calendriers));
+      // Si le calendrier affiché n'est plus accessible, on revient au sien
+      if (!Api.calendrierActuel() && Api.user) Api.setCalendrier(Api.user.id);
+    },
+
+    setCalendrier: function (id) {
+      Api.calendrier = id || (Api.user ? Api.user.id : '');
+      ls(K_CAL, Api.calendrier || null);
+      return Api.calendrier;
+    },
+
+    calendrierActuel: function () {
+      for (var i = 0; i < Api.calendriers.length; i++) {
+        if (Api.calendriers[i].id === Api.calendrier) return Api.calendriers[i];
+      }
+      return null;
+    },
+
+    /** true si l'utilisateur peut modifier le calendrier affiché */
+    peutEcrire: function () {
+      var c = Api.calendrierActuel();
+      if (!c) return !Api.authed();          // mode local : toujours modifiable
+      return c.role !== 'lecture';
+    },
+
+    estPartage: function () {
+      var c = Api.calendrierActuel();
+      return !!(c && c.role !== 'proprietaire');
     },
 
     setBase: function (url) {
@@ -139,8 +179,43 @@
     me: function () {
       return Api.request('/api/me').then(function (d) {
         if (d && d.user) { Api.user = d.user; ls(K_USER, JSON.stringify(d.user)); }
+        if (d && d.calendriers) Api.setCalendriers(d.calendriers);
         return d && d.user;
       });
+    },
+
+    /* ── Partage ── */
+    inviter: function (role) {
+      return Api.request('/api/partage/inviter', { method: 'POST', body: { role: role } });
+    },
+
+    rejoindre: function (code) {
+      return Api.request('/api/partage/rejoindre', {
+        method: 'POST', body: { code: code }
+      }).then(function (d) {
+        if (d && d.calendriers) Api.setCalendriers(d.calendriers);
+        return d;
+      });
+    },
+
+    partage: function () {
+      return Api.request('/api/partage').then(function (d) {
+        if (d && d.calendriers) Api.setCalendriers(d.calendriers);
+        return d;
+      });
+    },
+
+    retirer: function (calendrierId, utilisateurId) {
+      return Api.request('/api/partage/retirer', {
+        method: 'POST', body: { calendrier: calendrierId, utilisateur: utilisateurId }
+      }).then(function (d) {
+        if (d && d.calendriers) Api.setCalendriers(d.calendriers);
+        return d;
+      });
+    },
+
+    annulerInvitation: function (code) {
+      return Api.request('/api/partage/annuler', { method: 'POST', body: { code: code } });
     },
 
     logout: function () {
@@ -168,7 +243,11 @@
         return Api.request('/api/sync', {
           method: 'POST',
           timeout: 25000,
-          body: { cursor: Store.cursor || 0, events: aEnvoyer }
+          body: {
+            calendrier: Api.calendrier || undefined,
+            cursor: Store.cursor || 0,
+            events: aEnvoyer
+          }
         }).then(function (d) {
           d = d || {};
           recus += Store.applyRemote(d.events || []);
@@ -193,7 +272,7 @@
       for (var id in Store.events) tout.push(Store.events[id]);
       return Api.request('/api/sync', {
         method: 'POST', timeout: 40000,
-        body: { cursor: 0, events: tout, full: true }
+        body: { calendrier: Api.calendrier || undefined, cursor: 0, events: tout, full: true }
       }).then(function (d) {
         d = d || {};
         Store.applyRemote(d.events || []);
@@ -208,6 +287,8 @@
   function session(d) {
     if (!d || !d.token) throw err('BAD_RESPONSE', 'Réponse inattendue du serveur.');
     Api.setSession(d.token, d.user);
+    Api.setCalendrier(d.user.id);                 // on démarre sur le sien
+    Api.setCalendriers(d.calendriers || [{ id: d.user.id, pseudo: d.user.pseudo, role: 'proprietaire' }]);
     return d.user;
   }
 

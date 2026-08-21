@@ -131,6 +131,70 @@
       });
     },
 
+    /* ─────────── Saisie ───────────
+       UI.prompt({ titre, texte, placeholder, valeur, valider })
+       -> Promise résolue avec le texte saisi, ou null si annulé */
+    prompt: function (opts) {
+      return new Promise(function (resolve) {
+        var wrap = document.createElement('div');
+        wrap.className = 'modal';
+        wrap.id = 'confirmModal';   // même identifiant : géré par Échap
+
+        wrap.innerHTML =
+          '<div class="modal__backdrop" data-cancel></div>' +
+          '<div class="modal__panel modal__panel--sm" role="dialog" aria-modal="true">' +
+            '<header class="modal__head"><h2>' + UI.esc(opts.titre || 'Saisie') + '</h2>' +
+              '<button class="icon-btn" data-cancel><i data-ico="x"></i></button></header>' +
+            '<div class="modal__body">' +
+              (opts.texte ? '<p style="color:var(--text-2);font-size:13.5px;line-height:1.6">' +
+                UI.esc(opts.texte) + '</p>' : '') +
+              '<label class="field"><span class="field__wrap">' +
+                '<input type="text" data-saisie autocomplete="off" autocapitalize="characters" ' +
+                'spellcheck="false" placeholder="' + UI.esc(opts.placeholder || '') + '" ' +
+                'value="' + UI.esc(opts.valeur || '') + '"></span></label>' +
+              '<p class="form__error" data-err hidden></p>' +
+            '</div>' +
+            '<footer class="modal__foot"><div class="modal__foot-right">' +
+              '<button class="btn btn--ghost" data-cancel>Annuler</button>' +
+              '<button class="btn btn--primary" data-ok>' + UI.esc(opts.valider || 'Valider') + '</button>' +
+            '</div></footer>' +
+          '</div>';
+
+        document.body.appendChild(wrap);
+        Icons.render(wrap);
+        pileModales.push('confirmModal');
+        document.body.style.overflow = 'hidden';
+
+        var champ = wrap.querySelector('[data-saisie]');
+        setTimeout(function () { champ.focus(); }, 60);
+
+        champ.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter') { e.preventDefault(); valider(); }
+        });
+
+        wrap.addEventListener('click', function (e) {
+          if (e.target.closest('[data-cancel]')) return termine(null);
+          if (e.target.closest('[data-ok]')) return valider();
+        });
+
+        function valider() {
+          var v = champ.value.trim();
+          if (!v) { champ.focus(); return; }
+          termine(v);
+        }
+
+        function termine(val) {
+          var i = pileModales.indexOf('confirmModal');
+          if (i !== -1) pileModales.splice(i, 1);
+          if (!pileModales.length) document.body.style.overflow = '';
+          if (wrap.parentNode) wrap.parentNode.removeChild(wrap);
+          resolve(val);
+        }
+
+        wrap._cancel = termine;
+      });
+    },
+
     /** Ferme la confirmation ouverte (utilisé par la touche Échap) */
     cancelConfirm: function () {
       var w = document.getElementById('confirmModal');

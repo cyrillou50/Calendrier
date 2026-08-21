@@ -13,7 +13,8 @@ Le site est **statique** (GitHub Pages), les données sont **sauvegardées sur t
 - **Recherche** instantanée sur tout le contenu
 - **Filtres** par catégorie, par importance, masquage des éléments terminés
 - **Thème clair et sombre**, responsive jusqu'au mobile
-- **Comptes** — inscription, connexion, mot de passe haché (scrypt), sessions révocables
+- **Comptes** — pseudo + mot de passe haché (scrypt), sessions révocables
+- **Partage à plusieurs** — invite quelqu'un par code, en lecture seule ou avec droit de modification
 - **Synchronisation multi-appareils** avec résolution de conflits
 - **Fonctionne hors ligne** — tout est en local d'abord, la synchro rattrape ensuite
 - **Exports** JSON et `.ics` (importable dans Google Agenda, Outlook, Apple Calendrier)
@@ -219,6 +220,34 @@ réimportable. Utile avant une manipulation risquée.
 
 ---
 
+## Partager son calendrier
+
+**Inviter quelqu'un** — avatar → *Compte & sauvegarde* → **Inviter quelqu'un**.
+Choisis le droit accordé, un code apparaît (`XXXX-XXXX`). Transmets-le.
+
+**Rejoindre** — la personne crée son compte, puis *Compte & sauvegarde* →
+**Rejoindre avec un code** et saisit le code.
+
+Un sélecteur apparaît alors en haut de la barre latérale pour passer d'un
+calendrier à l'autre. Les modifications se synchronisent entre tous ceux qui y
+ont accès, avec la même règle de conflit que pour un calendrier personnel : la
+version la plus récente l'emporte.
+
+| | Lecture seule | Peut modifier | Propriétaire |
+|---|---|---|---|
+| Voir les événements | ✓ | ✓ | ✓ |
+| Créer, modifier, supprimer | | ✓ | ✓ |
+| Inviter et retirer des accès | | | ✓ |
+
+**Pourquoi un code plutôt qu'un pseudo :** inviter par pseudo obligerait le
+serveur à répondre « ce pseudo existe » ou « il n'existe pas », ce qui permet de
+deviner qui a un compte. Le code ne révèle rien.
+
+Chaque code est **à usage unique**, valable **7 jours**, et annulable à tout
+moment. Le propriétaire peut retirer un accès quand il veut ; un invité peut se
+retirer lui-même. Personne ne peut réinviter sur un calendrier qui n'est pas le
+sien — le partage ne se propage pas en cascade.
+
 ## Raccourcis clavier
 
 | Touche | Action |
@@ -236,9 +265,9 @@ réimportable. Utile avant une manipulation risquée.
 
 ## Tests
 
-154 tests couvrent le calcul des dates, les récurrences, le rendu des vues,
-l'échappement HTML, l'API, l'isolation entre comptes, la résolution de conflits
-et les pièges silencieux du navigateur.
+179 tests couvrent le calcul des dates, les récurrences, le rendu des vues,
+l'échappement HTML, l'API, le partage et ses droits, l'isolation entre comptes,
+la résolution de conflits et les pièges silencieux du navigateur.
 
 ```bash
 node test/run.js             # tout
@@ -246,7 +275,7 @@ node test/store.test.js      # dates, récurrences, stockage       (32)
 node test/render.test.js     # rendu des 4 vues, sécurité XSS     (27)
 node test/lint.test.js       # pièges du navigateur                (9)
 node server/test/migration.js# migration de la base               (14)
-node server/test/e2e.js      # API de bout en bout                (72)
+node server/test/e2e.js      # API de bout en bout                (97)
 ```
 
 `lint.test.js` attrape une famille d'erreurs que rien d'autre ne voit :

@@ -18,6 +18,7 @@ process.env.DB_PATH = path.join(TMP, 'test.db');
 process.env.ALLOWED_ORIGINS = 'https://exemple.github.io';
 process.env.ALLOW_REGISTRATION = 'true';
 process.env.MAX_EVENTS_PER_USER = '50';
+process.env.RATE_LIMIT_REGISTER = '200';   // beaucoup de comptes créés ici
 
 const { serveur } = require('../src/server');
 
@@ -322,12 +323,138 @@ const ev = (id, extra = {}) => ({
     eq('transaction annulée (rien écrit)', apres.data.evenements, 4);
   }
 
+  /* ─────────── Partage ─────────── */
+  console.log('\n── Partage ──');
+  let jetonB = '', userB = null, codeEcriture = '';
+  {
+    const b = await appel('/api/auth/register', {
+      methode: 'POST', body: { pseudo: 'Amie', password: 'motdepasse123' }
+    });
+    jetonB = b.data.token; userB = b.data.user;
+    eq('B démarre avec son seul calendrier', b.data.calendriers.length, 1);
+    eq('B est propriétaire du sien', b.data.calendriers[0].role, 'proprietaire');
+  }
+  {
+    const inv = await appel('/api/partage/inviter', {
+      methode: 'POST', jeton: jetonA, body: { role: 'ecriture' }
+    });
+    eq('invitation créée', inv.statut, 200);
+    vrai('code au format XXXX-XXXX', /^[A-Z2-9]{4}-[A-Z2-9]{4}$/.test(inv.data.code));
+    eq('rôle demandé respecté', inv.data.role, 'ecriture');
+    codeEcriture = inv.data.code;
+
+    eq('invitation sans jeton refusée',
+       (await appel('/api/partage/inviter', { methode: 'POST', body: {} })).statut, 401);
+  }
+  {
+    const faux = await appel('/api/partage/rejoindre', {
+      methode: 'POST', jeton: jetonB, body: { code: 'ZZZZ-ZZZZ' }
+    });
+    eq('code inconnu 404', faux.statut, 404);
+
+    const soi = await appel('/api/partage/rejoindre', {
+      methode: 'POST', jeton: jetonA, body: { code: codeEcriture }
+    });
+    eq('on ne rejoint pas son propre calendrier', soi.statut, 400);
+
+    const r = await appel('/api/partage/rejoindre', {
+      methode: 'POST', jeton: jetonB, body: { code: codeEcriture }
+    });
+    eq('B rejoint 200', r.statut, 200);
+    eq('rôle transmis', r.data.calendrier.role, 'ecriture');
+    eq('B voit 2 calendriers', r.data.calendriers.length, 2);
+
+    // Un code ne sert qu'une fois
+    const rejeu = await appel('/api/partage/rejoindre', {
+      methode: 'POST', jeton: jetonB, body: { code: codeEcriture }
+    });
+    eq('code non réutilisable', rejeu.statut, 404);
+  }
+  {
+    // B lit et écrit vraiment dans le calendrier de A
+    const lecture = await appel('/api/sync', {
+      methode: 'POST', jeton: jetonB, body: { calendrier: userA.id, cursor: 0, events: [] }
+    });
+    eq('B lit le calendrier de A', lecture.data.total, 4);
+    eq('rôle renvoyé', lecture.data.role, 'ecriture');
+
+    const ecriture = await appel('/api/sync', {
+      methode: 'POST', jeton: jetonB,
+      body: { calendrier: userA.id, cursor: 0, events: [ev('dddddddd-1', { title: 'Ajouté par Amie', updatedAt: 5000 })] }
+    });
+    eq('B écrit chez A', ecriture.data.ecrits, 1);
+
+    const vuParA = await appel('/api/sync', {
+      methode: 'POST', jeton: jetonA, body: { cursor: 0, events: [] }
+    });
+    vrai('A voit l’ajout de B',
+      vuParA.data.events.some(e => e.id === 'dddddddd-1' && e.title === 'Ajouté par Amie'));
+
+    // Son propre calendrier reste distinct
+    const sienB = await appel('/api/sync', { methode: 'POST', jeton: jetonB, body: { cursor: 0, events: [] } });
+    eq('le calendrier de B reste vide', sienB.data.total, 0);
+  }
+  {
+    // Un tiers n'a aucun accès
+    const c = await appel('/api/auth/register', {
+      methode: 'POST', body: { pseudo: 'Intrus', password: 'motdepasse123' }
+    });
+    const vol = await appel('/api/sync', {
+      methode: 'POST', jeton: c.data.token, body: { calendrier: userA.id, cursor: 0, events: [] }
+    });
+    eq('calendrier inaccessible 403', vol.statut, 403);
+
+    const volExport = await appel('/api/export?calendrier=' + userA.id, { jeton: c.data.token });
+    eq('export inaccessible 403', volExport.statut, 403);
+  }
+  {
+    // Lecture seule
+    const inv = await appel('/api/partage/inviter', {
+      methode: 'POST', jeton: jetonA, body: { role: 'lecture' }
+    });
+    const c = await appel('/api/auth/register', {
+      methode: 'POST', body: { pseudo: 'Lecteur', password: 'motdepasse123' }
+    });
+    await appel('/api/partage/rejoindre', {
+      methode: 'POST', jeton: c.data.token, body: { code: inv.data.code }
+    });
+
+    const lit = await appel('/api/sync', {
+      methode: 'POST', jeton: c.data.token, body: { calendrier: userA.id, cursor: 0, events: [] }
+    });
+    eq('le lecteur peut lire', lit.statut, 200);
+    eq('rôle lecture', lit.data.role, 'lecture');
+
+    const ecrit = await appel('/api/sync', {
+      methode: 'POST', jeton: c.data.token,
+      body: { calendrier: userA.id, cursor: 0, events: [ev('eeeeeeee-1', { updatedAt: 6000 })] }
+    });
+    eq('écriture refusée en lecture seule', ecrit.statut, 403);
+  }
+  {
+    // Retrait d'accès
+    const pasMoi = await appel('/api/partage/retirer', {
+      methode: 'POST', jeton: jetonB, body: { calendrier: userA.id, utilisateur: userA.id }
+    });
+    eq('on ne retire pas quelqu’un d’autre', pasMoi.statut, 403);
+
+    const r = await appel('/api/partage/retirer', {
+      methode: 'POST', jeton: jetonA, body: { calendrier: userA.id, utilisateur: userB.id }
+    });
+    eq('A retire B', r.statut, 200);
+
+    const apres = await appel('/api/sync', {
+      methode: 'POST', jeton: jetonB, body: { calendrier: userA.id, cursor: 0, events: [] }
+    });
+    eq('B n’a plus accès', apres.statut, 403);
+  }
+
   /* ─────────── Export ─────────── */
   console.log('\n── Export ──');
   {
     const r = await appel('/api/export', { jeton: jetonA });
     eq('export 200', r.statut, 200);
-    eq('export : supprimés exclus', r.data.events.length, 4);
+    eq('export : supprimés exclus', r.data.events.length, 5);   // dont l’ajout de la personne invitée
     vrai('pièce jointe', /attachment/.test(r.entetes.get('content-disposition')));
     eq('export sans jeton 401', (await appel('/api/export')).statut, 401);
   }
