@@ -73,6 +73,23 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS events_seq ON events(user_id, seq);
 
+  /* ── Catégories ──
+     Rattachées au calendrier, pas à la personne : tous ceux qui
+     partagent un calendrier voient et modifient les mêmes. */
+  CREATE TABLE IF NOT EXISTS categories (
+    calendrier_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    id            TEXT NOT NULL,
+    label         TEXT NOT NULL DEFAULT '',
+    color         TEXT NOT NULL DEFAULT '#94A3B8',
+    ordre         INTEGER NOT NULL DEFAULT 0,
+    created_at    INTEGER NOT NULL,
+    updated_at    INTEGER NOT NULL,
+    deleted       INTEGER NOT NULL DEFAULT 0,
+    seq           INTEGER NOT NULL,
+    PRIMARY KEY (calendrier_id, id)
+  );
+  CREATE INDEX IF NOT EXISTS categories_seq ON categories(calendrier_id, seq);
+
   /* ── Partage ──
      Un « calendrier » est identifié par l'id de son propriétaire :
      events.user_id est en réalité l'identifiant du calendrier.

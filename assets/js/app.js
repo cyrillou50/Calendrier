@@ -85,7 +85,6 @@
     Store.open(cle);
     Cal.ancre = D.today();
     Cal.selection = D.today();
-    Cal.miniAncre = D.today();
     Cal.render();
 
     var av = document.querySelector('[data-avatar]');
@@ -387,12 +386,6 @@
       var vue = t.closest('[data-view]');
       if (vue) return Cal.setVue(vue.dataset.view);
 
-      var mini = t.closest('[data-mini]');
-      if (mini) {
-        Cal.miniAncre = D.addMonths(D.startOfMonth(Cal.miniAncre), +mini.dataset.mini);
-        Cal.rendreMini();
-        return;
-      }
 
       var catBtn = t.closest('[data-cat]');
       if (catBtn) return basculerCat(catBtn.dataset.cat);
@@ -485,6 +478,13 @@
       case 'peek':          return basculerVisibilite(el);
       case 'offline':       return modeLocal();
 
+      /* ── Catégories ── */
+      case 'gerer-cats':    return ouvrirCategories();
+      case 'cat-editer':    return editerCat(el.dataset.cat);
+      case 'cat-supprimer': return supprimerCat(el.dataset.cat);
+      case 'cat-annuler':   return annulerEditionCat();
+      case 'cat-couleur':   return rendreCouleurs(el.dataset.couleur);
+
       /* ── Menu des calendriers ── */
       case 'cal-menu':      return ouvrirMenuCalendriers();
       case 'cal-choisir':   fermerMenuCalendriers(); return changerCalendrier(el.dataset.cal);
@@ -519,19 +519,18 @@
   function cliquerJour(ymd, el) {
     Cal.selection = ymd;
     if (Cal.vue === 'month') {
-      if (el.classList.contains('mday') && !el.closest('.minical')) {
+      if (el.classList.contains('mday')) {
         // clic sur une case du mois : ouvre le détail si le jour a des événements
         var n = Store.onDay(ymd, Cal.filtres).length;
         if (n) return ouvrirJour(ymd);
         if (!Api.peutEcrire()) return;      // jour vide, calendrier en lecture seule
         return ouvrirEvenement(null, ymd);
       }
-      Cal.miniAncre = ymd;
       Cal.ancre = ymd;
       return Cal.render();
     }
-    if (el.closest('.minical') || el.closest('.agenda__date') || el.closest('.tgrid__dayhead')) {
-      Cal.ancre = ymd; Cal.miniAncre = ymd;
+    if (el.closest('.agenda__date') || el.closest('.tgrid__dayhead')) {
+      Cal.ancre = ymd;
       if (el.closest('.tgrid__dayhead')) Cal.vue = 'day';
       return Cal.render();
     }
@@ -576,6 +575,12 @@
     form.addEventListener('submit', function (e) {
       e.preventDefault();
       enregistrerEvenement(form);
+    });
+
+    var formCat = document.getElementById('catForm');
+    formCat.addEventListener('submit', function (e) {
+      e.preventDefault();
+      enregistrerCat(formCat);
     });
 
     form.elements.allDay.addEventListener('change', function () {
@@ -928,6 +933,123 @@
     UI.open('accountModal');
     majPartage();          // après l'ouverture : majPartage n'agit que si visible
     Icons.render(document.getElementById('accountModal'));
+  }
+
+  /* ═════════════════ CATÉGORIES ═════════════════ */
+
+  function ouvrirCategories() {
+    if (!Api.peutEcrire()) return UI.err('Ce calendrier est en lecture seule.');
+    annulerEditionCat();
+    rendreListeCats();
+    UI.open('catsModal');
+  }
+
+  function rendreListeCats() {
+    var hote = document.querySelector('[data-catlist]');
+    if (!hote) return;
+    var h = '';
+    for (var i = 0; i < Store.CATS.length; i++) {
+      var c = Store.CATS[i];
+      var n = Store.compteCat(c.id);
+      h += '<li>' +
+             '<span class="catlist__pastille" style="background:' + UI.esc(c.color) + '"></span>' +
+             '<span><span class="catlist__n">' + UI.esc(c.label) + '</span>' +
+             '<span class="catlist__c">' + (n ? n + ' événement' + (n > 1 ? 's' : '') : 'aucun événement') + '</span></span>' +
+             '<span class="catlist__actions">' +
+               '<button class="catlist__b" data-action="cat-editer" data-cat="' + UI.esc(c.id) + '" ' +
+                 'title="Renommer"><i data-ico="note"></i></button>' +
+               '<button class="catlist__b catlist__b--sup" data-action="cat-supprimer" data-cat="' + UI.esc(c.id) + '" ' +
+                 'title="Supprimer"><i data-ico="trash"></i></button>' +
+             '</span></li>';
+    }
+    hote.innerHTML = h;
+    Icons.render(hote);
+  }
+
+  function rendreCouleurs(active) {
+    var hote = document.querySelector('[data-couleurs]');
+    if (!hote) return;
+    var h = '';
+    for (var i = 0; i < Store.COULEURS.length; i++) {
+      var col = Store.COULEURS[i];
+      h += '<button type="button" data-action="cat-couleur" data-couleur="' + col + '" ' +
+             'style="background:' + col + '" class="' + (col === active ? 'is-active' : '') + '" ' +
+             'aria-label="' + col + '"></button>';
+    }
+    hote.innerHTML = h;
+    document.getElementById('catForm').dataset.couleur = active;
+  }
+
+  function editerCat(id) {
+    var c = Store.cat(id);
+    var form = document.getElementById('catForm');
+    form.elements.id.value = id;
+    form.elements.label.value = c.label;
+    form.classList.add('is-edition');
+    document.querySelector('[data-catform-titre]').textContent = 'Renommer « ' + c.label + ' »';
+    document.querySelector('[data-catform-valider]').textContent = 'Enregistrer';
+    document.querySelector('[data-action="cat-annuler"]').hidden = false;
+    rendreCouleurs(c.color);
+    form.elements.label.focus();
+  }
+
+  function annulerEditionCat() {
+    var form = document.getElementById('catForm');
+    form.reset();
+    form.elements.id.value = '';
+    form.classList.remove('is-edition');
+    document.querySelector('[data-catform-titre]').textContent = 'Nouvelle catégorie';
+    document.querySelector('[data-catform-valider]').textContent = 'Ajouter';
+    document.querySelector('[data-action="cat-annuler"]').hidden = true;
+    rendreCouleurs(Store.COULEURS[Store.CATS.length % Store.COULEURS.length]);
+  }
+
+  function enregistrerCat(form) {
+    var label = form.elements.label.value.trim();
+    if (!label) { form.elements.label.focus(); return UI.err('Donne un nom à la catégorie.'); }
+
+    Store.upsertCat({
+      id: form.elements.id.value || null,
+      label: label,
+      color: form.dataset.couleur || Store.COULEURS[0]
+    });
+
+    UI.ok(form.elements.id.value ? 'Catégorie modifiée' : 'Catégorie ajoutée');
+    annulerEditionCat();
+    rendreListeCats();
+    Cal.render();
+    planifierSync();
+  }
+
+  function supprimerCat(id) {
+    var c = Store.cat(id);
+    var n = Store.compteCat(id);
+    var repli = null;
+    for (var i = 0; i < Store.CATS.length; i++) {
+      if (Store.CATS[i].id !== id) { repli = Store.CATS[i]; break; }
+    }
+    if (!repli) return UI.err('Il faut garder au moins une catégorie.');
+
+    UI.confirm({
+      titre: 'Supprimer « ' + c.label + ' » ?',
+      texte: n
+        ? n + ' événement' + (n > 1 ? 's' : '') + ' utilise' + (n > 1 ? 'nt' : '') +
+          ' cette catégorie. Ils seront basculés vers « ' + repli.label +' ».'
+        : 'Aucun événement ne l’utilise.',
+      actions: [{ id: 'ok', label: 'Supprimer', style: 'btn--primary', ico: 'trash' }]
+    }).then(function (r) {
+      if (r !== 'ok') return;
+      var deplaces = Store.removeCat(id, repli.id);
+      if (deplaces === -1) return UI.err('Il faut garder au moins une catégorie.');
+      // Un filtre pointant sur la catégorie disparue n'aurait plus de sens
+      var k = Cal.filtres.cats.indexOf(id);
+      if (k !== -1) Cal.filtres.cats.splice(k, 1);
+      annulerEditionCat();
+      rendreListeCats();
+      Cal.render();
+      UI.ok(deplaces ? 'Supprimée · ' + deplaces + ' événement(s) déplacé(s)' : 'Catégorie supprimée');
+      planifierSync();
+    });
   }
 
   /* ═════════════════ PRÉSENCE ═════════════════ */

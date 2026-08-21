@@ -75,7 +75,52 @@ eq('filtre important',Store.onDay('2026-08-20',{important:true}).map(x=>x.ev.tit
 eq('recherche',Store.search('réun').map(x=>x.title),['Réunion']);
 eq('recherche vide',Store.search('z'),[]);
 
+console.log('\n── Catégories personnalisées ──');
+Store.open('cats');
+eq('4 categories par defaut',Store.CATS.map(c=>c.id),['perso','travail','rappel','autre']);
+
+const sport=Store.upsertCat({label:'Sport',color:'#34D399'});
+eq('ajout',Store.CATS.length,5);
+eq('libelle',Store.cat(sport.id).label,'Sport');
+eq('couleur',Store.cat(sport.id).color,'#34D399');
+eq('couleur invalide corrigee',Store.upsertCat({label:'X',color:'rouge'}).color,Store.COULEURS[0]);
+
+Store.upsertCat({id:sport.id,label:'Sport & loisirs',color:'#22D3EE'});
+eq('modification sur place',Store.cat(sport.id).label,'Sport & loisirs');
+eq('pas de doublon',Store.CATS.filter(c=>c.id===sport.id).length,1);
+
+const e1=Store.upsert({title:'Course',date:'2026-08-20',cat:sport.id});
+const e2=Store.upsert({title:'Yoga',date:'2026-08-21',cat:sport.id});
+eq('compte par categorie',Store.compteCat(sport.id),2);
+
+eq('suppression deplace les evenements',Store.removeCat(sport.id,'perso'),2);
+eq('evenement rebascule',Store.get(e1.id).cat,'perso');
+eq('second aussi',Store.get(e2.id).cat,'perso');
+eq('categorie retiree de la liste',Store.CATS.filter(c=>c.id===sport.id).length,0);
+eq('categorie supprimee reste lisible',Store.cat(sport.id).label,'Sport & loisirs (supprimée)');
+
+// Une catégorie inconnue ne casse pas l'affichage
+eq('categorie inconnue -> repli',typeof Store.cat('jamais-vue').color,'string');
+
+console.log('\n── Synchro des catégories ──');
+Store.save(); Store._load();
+eq('categories rechargees',Store.CATS.length,5);
+const avant=Date.now()-1;   // borne stricte : on se place juste avant
+const nouvelle=Store.upsertCat({label:'Voyages',color:'#FBBF24'});
+eq('modification detectee',Store.catsChangesSince(avant).some(c=>c.id===nouvelle.id),true);
+eq('anciennes ignorees',Store.catsChangesSince(Date.now()+9999).length,0);
+
+eq('fusion distante recente',Store.applyRemoteCats([
+  {id:nouvelle.id,label:'Voyages 2027',color:'#FB7185',ordre:9,updatedAt:nouvelle.updatedAt+5000}
+]),1);
+eq('libelle fusionne',Store.cat(nouvelle.id).label,'Voyages 2027');
+eq('fusion distante ancienne ignoree',Store.applyRemoteCats([
+  {id:nouvelle.id,label:'Perime',color:'#000000',updatedAt:1}
+]),0);
+eq('export contient les categories',Store.exportData().cats.length,Store.CATS.length);
+
 console.log('\n── Persistance & synchro ──');
+Store.open('test');
 const n=Store.count();
 Store.save(); Store._load();
 eq('rechargement',Store.count(),n);

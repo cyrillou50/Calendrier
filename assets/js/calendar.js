@@ -12,7 +12,6 @@
     vue: 'month',
     ancre: D.today(),        // date pilotant la période affichée
     selection: D.today(),    // jour sélectionné
-    miniAncre: D.today(),    // mois du mini-calendrier
     filtres: { cats: [], important: false, undone: false },
 
     /* ─────────── Navigation ─────────── */
@@ -24,7 +23,6 @@
     aller: function (ymd) {
       Cal.selection = ymd;
       Cal.ancre = ymd;
-      Cal.miniAncre = ymd;
       Cal.render();
     },
 
@@ -33,7 +31,6 @@
       else if (Cal.vue === 'day') Cal.ancre = D.addDays(Cal.ancre, dir);
       else Cal.ancre = D.addMonths(D.startOfMonth(Cal.ancre), dir);
       if (Cal.vue === 'day') Cal.selection = Cal.ancre;
-      Cal.miniAncre = Cal.ancre;
       Cal.render();
     },
 
@@ -86,7 +83,6 @@
       if (Cal.vue === 'day')    Cal.rendreGrille(true);
       if (Cal.vue === 'agenda') Cal.rendreAgenda();
 
-      Cal.rendreMini();
       Cal.rendreCats();
       Cal.rendreAVenir();
     },
@@ -292,42 +288,6 @@
         h += '</div></div>';
       }
       h += '</div></div>';
-
-      hote.innerHTML = h;
-      Icons.render(hote);
-    },
-
-    /* ═════════════ MINI-CALENDRIER ═════════════ */
-    rendreMini: function () {
-      var hote = document.querySelector('[data-minical]');
-      if (!hote) return;
-
-      var debut = D.startOfWeek(D.startOfMonth(Cal.miniAncre));
-      var mois = Cal.miniAncre.slice(0, 7);
-      var aujourd = D.today();
-      var occ = Store.occurrencesInRange(debut, D.addDays(debut, 41), Cal.filtres);
-      var parJour = grouper(occ);
-
-      var h = '<div class="minical__head">' +
-                '<div class="minical__title">' + D.monthYear(Cal.miniAncre) + '</div>' +
-                '<div class="minical__nav">' +
-                  '<button class="icon-btn" data-mini="-1"><i data-ico="chev-l"></i></button>' +
-                  '<button class="icon-btn" data-mini="1"><i data-ico="chev-r"></i></button>' +
-                '</div></div><div class="minical__grid">';
-
-      var mini = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
-      for (var i = 0; i < 7; i++) h += '<div class="minical__dow">' + mini[i] + '</div>';
-
-      for (var k = 0; k < 42; k++) {
-        var ymd = D.addDays(debut, k);
-        var cls = 'minical__day' +
-          (ymd.slice(0, 7) !== mois ? ' is-out' : '') +
-          (ymd === aujourd ? ' is-today' : '') +
-          (ymd === Cal.selection ? ' is-sel' : '') +
-          (parJour[ymd] ? ' has-ev' : '');
-        h += '<button class="' + cls + '" data-day="' + ymd + '">' + D.parse(ymd).getDate() + '</button>';
-      }
-      h += '</div>';
 
       hote.innerHTML = h;
       Icons.render(hote);

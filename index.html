@@ -163,10 +163,12 @@
 
   <div class="layout">
     <aside class="sidebar" data-sidebar>
-      <div class="minical" data-minical></div>
 
       <section class="side-block">
-        <h3 class="side-title">Catégories</h3>
+        <h3 class="side-title">
+          Catégories
+          <button class="side-title__btn" data-action="gerer-cats" title="Gérer les catégories"><i data-ico="plus"></i></button>
+        </h3>
         <ul class="cats" data-cats></ul>
       </section>
 
@@ -346,6 +348,48 @@
       <button class="btn btn--soft btn--sm" data-action="signin" hidden><i data-ico="user"></i> Se connecter / créer un compte</button>
       <div class="modal__foot-right">
         <button class="btn btn--primary" data-close>Fermer</button>
+      </div>
+    </footer>
+  </div>
+</div>
+
+<!-- ═══════════════════ MODALE CATÉGORIES ═══════════════════ -->
+<div class="modal" id="catsModal" hidden>
+  <div class="modal__backdrop" data-close></div>
+  <div class="modal__panel modal__panel--sm" role="dialog" aria-modal="true">
+    <header class="modal__head">
+      <h2>Catégories</h2>
+      <button class="icon-btn" data-close><i data-ico="x"></i></button>
+    </header>
+    <div class="modal__body">
+      <p class="note"><i data-ico="users"></i>
+        <span>Les catégories appartiennent au calendrier : tous ceux qui le partagent voient les mêmes.</span>
+      </p>
+
+      <ul class="catlist" data-catlist></ul>
+
+      <form id="catForm" class="catform" novalidate>
+        <input type="hidden" name="id">
+        <label class="field">
+          <span class="field__label" data-catform-titre>Nouvelle catégorie</span>
+          <span class="field__wrap"><i data-ico="note"></i>
+            <input type="text" name="label" placeholder="Sport, Factures, Anniversaires…"
+                   maxlength="40" autocomplete="off" required>
+          </span>
+        </label>
+        <div class="field">
+          <span class="field__label">Couleur</span>
+          <div class="couleurs" data-couleurs></div>
+        </div>
+        <div class="btnrow">
+          <button class="btn btn--primary btn--sm" type="submit" data-catform-valider>Ajouter</button>
+          <button class="btn btn--ghost btn--sm" type="button" data-action="cat-annuler" hidden>Annuler</button>
+        </div>
+      </form>
+    </div>
+    <footer class="modal__foot">
+      <div class="modal__foot-right">
+        <button class="btn btn--primary" data-close>Terminé</button>
       </div>
     </footer>
   </div>

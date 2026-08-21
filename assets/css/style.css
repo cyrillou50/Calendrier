@@ -418,35 +418,19 @@ textarea:focus { border-color: var(--accent); box-shadow: var(--ring); }
   display: flex; flex-direction: column; gap: 18px; overflow-y: auto;
 }
 .side-title { font-size: 11px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: .09em; color: var(--text-3); margin-bottom: 10px; }
+  letter-spacing: .09em; color: var(--text-3); margin-bottom: 10px;
+  display: flex; align-items: center; gap: 6px; }
+.side-title__btn {
+  margin-left: auto; width: 22px; height: 22px; border-radius: 6px;
+  display: grid; place-items: center; color: var(--text-3); font-size: 14px;
+  transition: background .14s, color .14s;
+}
+.side-title__btn:hover { background: var(--surface-2); color: var(--accent-2); }
 .side-block--grow { flex: 1; min-height: 120px; }
 .side-foot { border-top: 1px solid var(--line); padding-top: 14px; }
 .side-foot__meta { font-size: 11.5px; color: var(--text-3); text-align: center; margin-top: 8px; }
 
 .scrim { display: none; }
-
-/* ── Mini-calendrier ── */
-.minical { user-select: none; }
-.minical__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
-.minical__title { font-family: var(--font-display); font-size: 14px; font-weight: 600; text-transform: capitalize; }
-.minical__nav { display: flex; gap: 2px; }
-.minical__nav .icon-btn { width: 26px; height: 26px; font-size: 14px; border-radius: 7px; }
-.minical__grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
-.minical__dow { font-size: 10px; font-weight: 700; color: var(--text-3); text-align: center; padding-bottom: 4px; text-transform: uppercase; }
-.minical__day {
-  aspect-ratio: 1; display: grid; place-items: center; border-radius: 8px;
-  font-size: 12px; color: var(--text-2); cursor: pointer; position: relative;
-  transition: background .14s, color .14s;
-}
-.minical__day:hover { background: var(--surface-3); color: var(--text); }
-.minical__day.is-out { color: var(--text-3); opacity: .45; }
-.minical__day.is-today { color: var(--accent-2); font-weight: 700; }
-.minical__day.is-sel { background: var(--accent); color: #fff; font-weight: 600; }
-.minical__day.has-ev::after {
-  content: ""; position: absolute; bottom: 3px; width: 3.5px; height: 3.5px;
-  border-radius: 50%; background: var(--accent-2);
-}
-.minical__day.is-sel.has-ev::after { background: #fff; }
 
 /* ── Catégories ── */
 .cats li { margin-bottom: 2px; }
@@ -810,6 +794,44 @@ textarea:focus { border-color: var(--accent); box-shadow: var(--ring); }
 }
 .invite__hint { font-size: 11.5px; color: var(--text-3); margin-top: 9px; line-height: 1.5; }
 
+
+/* ── Gestion des catégories ── */
+.catlist { display: grid; gap: 6px; }
+.catlist li {
+  display: flex; align-items: center; gap: 11px;
+  padding: 9px 11px; border-radius: 10px;
+  background: var(--surface-2); border: 1px solid var(--line);
+}
+.catlist__pastille { width: 14px; height: 14px; border-radius: 5px; flex: 0 0 auto; }
+.catlist__n { font-size: 13.5px; font-weight: 500; }
+.catlist__c { font-size: 11px; color: var(--text-3); }
+.catlist__actions { margin-left: auto; display: flex; gap: 2px; }
+.catlist__b {
+  width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center;
+  color: var(--text-3); font-size: 14px; transition: background .15s, color .15s;
+}
+.catlist__b:hover { background: var(--surface-3); color: var(--text); }
+.catlist__b--sup:hover { background: rgba(244,63,94,.14); color: var(--danger); }
+
+.catform {
+  display: grid; gap: 14px; padding: 15px;
+  border-radius: var(--r); background: var(--surface-2); border: 1px solid var(--line);
+}
+.catform.is-edition { border-color: var(--accent); background: var(--accent-soft); }
+
+.couleurs { display: flex; gap: 8px; flex-wrap: wrap; }
+.couleurs button {
+  width: 30px; height: 30px; border-radius: 9px; position: relative;
+  border: 2px solid transparent; transition: transform .15s var(--ease), border-color .15s;
+}
+.couleurs button:hover { transform: scale(1.12); }
+.couleurs button.is-active { border-color: var(--text); }
+.couleurs button.is-active::after {
+  content: ""; position: absolute; inset: 0; margin: auto;
+  width: 9px; height: 5px; border-left: 2px solid #fff; border-bottom: 2px solid #fff;
+  transform: rotate(-45deg); margin-top: 10px;
+  filter: drop-shadow(0 1px 1px rgba(0,0,0,.4));
+}
 
 /* Liste de jour dans la modale */
 .daylist { display: grid; gap: 8px; }

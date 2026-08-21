@@ -270,7 +270,8 @@ const ev = (id, extra = {}) => ({
     eq('3 rejets', r.data.rejetes, 3);
     eq('1 écrit', r.data.ecrits, 1);
     const e = r.data.events.find(x => x.id === 'bbbbbbbb-2');
-    eq('catégorie inconnue -> perso', e.cat, 'perso');
+    // Les catégories sont libres : seul le FORMAT de l'identifiant est validé
+    eq('identifiant de catégorie libre accepté', e.cat, 'pirate');
     eq('répétition inconnue -> none', e.repeat, 'none');
     eq('heure invalide -> null', e.startTime, null);
   }
@@ -321,6 +322,55 @@ const ev = (id, extra = {}) => ({
 
     const apres = await appel('/api/me', { jeton: jetonA });
     eq('transaction annulée (rien écrit)', apres.data.evenements, 4);
+  }
+
+  /* ─────────── Catégories personnalisées ─────────── */
+  console.log('\n── Catégories ──');
+  {
+    const r = await appel('/api/sync', {
+      methode: 'POST', jeton: jetonA,
+      body: {
+        cursor: 0, events: [],
+        categories: [
+          { id: 'sport', label: 'Sport', color: '#34D399', ordre: 5, createdAt: 1000, updatedAt: 1000 },
+          { id: 'factures', label: 'Factures', color: '#FB7185', ordre: 6, createdAt: 1000, updatedAt: 1000 }
+        ]
+      }
+    });
+    eq('2 catégories écrites', r.data.catsEcrites, 2);
+    eq('renvoyées au client', r.data.categories.length, 2);
+    const sport = r.data.categories.find(c => c.id === 'sport');
+    eq('libellé conservé', sport.label, 'Sport');
+    eq('couleur conservée', sport.color, '#34D399');
+    eq('ordre conservé', sport.ordre, 5);
+  }
+  {
+    // Nettoyage des entrées douteuses
+    const r = await appel('/api/sync', {
+      methode: 'POST', jeton: jetonA,
+      body: {
+        cursor: 0, events: [],
+        categories: [
+          { id: 'id avec espaces', label: 'X', color: '#000000' },
+          { id: 'x'.repeat(80), label: 'Y', color: '#000000' },
+          { id: 'ok-cat', label: 'z'.repeat(90), color: 'pas-une-couleur', ordre: 99999, updatedAt: 2000 }
+        ]
+      }
+    });
+    eq('2 catégories rejetées', r.data.rejetes, 2);
+    const c = r.data.categories.find(x => x.id === 'ok-cat');
+    eq('libellé tronqué à 40', c.label.length, 40);
+    eq('couleur invalide remplacée', c.color, '#94A3B8');
+    eq('ordre borné', c.ordre, 999);
+  }
+  {
+    // Un événement peut porter une catégorie personnalisée
+    const r = await appel('/api/sync', {
+      methode: 'POST', jeton: jetonA,
+      body: { cursor: 0, events: [ev('ffffffff-1', { cat: 'sport', updatedAt: 7000 })] }
+    });
+    eq('catégorie personnalisée sur un événement',
+       r.data.events.find(e => e.id === 'ffffffff-1').cat, 'sport');
   }
 
   /* ─────────── Partage ─────────── */
@@ -375,7 +425,7 @@ const ev = (id, extra = {}) => ({
     const lecture = await appel('/api/sync', {
       methode: 'POST', jeton: jetonB, body: { calendrier: userA.id, cursor: 0, events: [] }
     });
-    eq('B lit le calendrier de A', lecture.data.total, 4);
+    eq('B lit le calendrier de A', lecture.data.total, 5);
     eq('rôle renvoyé', lecture.data.role, 'ecriture');
 
     const ecriture = await appel('/api/sync', {
@@ -488,7 +538,7 @@ const ev = (id, extra = {}) => ({
   {
     const r = await appel('/api/export', { jeton: jetonA });
     eq('export 200', r.statut, 200);
-    eq('export : supprimés exclus', r.data.events.length, 5);   // dont l’ajout de la personne invitée
+    eq('export : supprimés exclus', r.data.events.length, 6);   // dont l’ajout de la personne invitée
     vrai('pièce jointe', /attachment/.test(r.entetes.get('content-disposition')));
     eq('export sans jeton 401', (await appel('/api/export')).statut, 401);
   }

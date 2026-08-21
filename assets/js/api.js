@@ -242,31 +242,35 @@
 
       var depuis = Store.lastSync || 0;
       var sortants = Store.changesSince(depuis);
+      var catsSortantes = Store.catsChangesSince(depuis);
       var debut = Date.now();
       var recus = 0, total = 0;
 
       // Le serveur tronque les grosses réponses et signale `more` :
       // on redemande la suite jusqu'à épuisement (10 tours maximum).
-      function tour(aEnvoyer, reste) {
+      function tour(aEnvoyer, catsAEnvoyer, reste) {
         return Api.request('/api/sync', {
           method: 'POST',
           timeout: 25000,
           body: {
             calendrier: Api.calendrier || undefined,
             cursor: Store.cursor || 0,
-            events: aEnvoyer
+            events: aEnvoyer,
+            categories: catsAEnvoyer
           }
         }).then(function (d) {
           d = d || {};
+          // Les catégories d'abord : les événements reçus peuvent y référer
+          Store.applyRemoteCats(d.categories || []);
           recus += Store.applyRemote(d.events || []);
           Store.cursor = d.cursor || Store.cursor || 0;
           total = d.total;
           Store.save();
-          if (d.more && reste > 0) return tour([], reste - 1);
+          if (d.more && reste > 0) return tour([], [], reste - 1);
         });
       }
 
-      return tour(sortants, 10).then(function () {
+      return tour(sortants, catsSortantes, 10).then(function () {
         Store.lastSync = debut;
         Store.save();
         return { envoyes: sortants.length, recus: recus, total: total };

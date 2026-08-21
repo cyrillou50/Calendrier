@@ -37,6 +37,16 @@ const selEvent     = db.prepare('SELECT updated_at FROM events WHERE user_id = ?
 const compteEvents = db.prepare('SELECT COUNT(*) c FROM events WHERE user_id = ? AND deleted = 0');
 const depuisSeq    = db.prepare(`SELECT * FROM events WHERE user_id = ? AND seq > ? ORDER BY seq LIMIT ${LOT_SYNC}`);
 const tousEvents   = db.prepare('SELECT * FROM events WHERE user_id = ? AND deleted = 0 ORDER BY date');
+const selCat       = db.prepare('SELECT updated_at FROM categories WHERE calendrier_id = ? AND id = ?');
+const catsDepuis   = db.prepare('SELECT * FROM categories WHERE calendrier_id = ? AND seq > ? ORDER BY seq LIMIT 500');
+const toutesCats   = db.prepare('SELECT * FROM categories WHERE calendrier_id = ? AND deleted = 0 ORDER BY ordre');
+const upsCat       = db.prepare(`
+  INSERT INTO categories (calendrier_id, id, label, color, ordre, created_at, updated_at, deleted, seq)
+  VALUES (:calendrier_id, :id, :label, :color, :ordre, :created_at, :updated_at, :deleted, :seq)
+  ON CONFLICT(calendrier_id, id) DO UPDATE SET
+    label=:label, color=:color, ordre=:ordre,
+    updated_at=:updated_at, deleted=:deleted, seq=:seq
+`);
 const upsEvent     = db.prepare(`
   INSERT INTO events (user_id, id, title, notes, location, date, end_date, all_day,
                       start_time, end_time, cat, important, done, repeat, skip,
@@ -334,9 +344,27 @@ on('POST', '/api/sync', (req) => {
     throw httpErr(400, 'Trop d’événements en une seule fois (5000 maximum).');
   }
 
-  let ecrits = 0, rejetes = 0;
+  const catsEntrantes = Array.isArray(req.body?.categories) ? req.body.categories : [];
+  if (catsEntrantes.length && role === 'lecture') {
+    throw httpErr(403, 'Tu es en lecture seule sur ce calendrier.');
+  }
+  if (catsEntrantes.length > 200) {
+    throw httpErr(400, 'Trop de catégories en une seule fois.');
+  }
+
+  let ecrits = 0, rejetes = 0, catsEcrites = 0;
 
   transaction(() => {
+    for (const brut of catsEntrantes) {
+      const c = validerCat(brut, calId);
+      if (!c) { rejetes++; continue; }
+      const actuel = selCat.get(calId, c.id);
+      if (actuel && actuel.updated_at > c.updated_at) continue;
+      c.seq = prochaineSeq();
+      upsCat.run(c);
+      catsEcrites++;
+    }
+
     const dejaLa = compteEvents.get(calId).c;
     let ajouts = 0;
 
@@ -361,16 +389,24 @@ on('POST', '/api/sync', (req) => {
   const lignes = depuisSeq.all(calId, curseur);
   const tronque = lignes.length === LOT_SYNC;
 
+  const cursor = tronque ? lignes[lignes.length - 1].seq : seqCourante();
+
+  // Les catégories sont peu nombreuses : jamais tronquées. Celles dont le
+  // seq dépasse un curseur ramené en arrière seront simplement renvoyées
+  // au tour suivant — la fusion est idempotente.
+  const cats = catsDepuis.all(calId, curseur).map(catVersClient);
+
   return {
     // Si la réponse est tronquée, le curseur s'arrête à la dernière ligne
     // envoyée : le client redemandera la suite.
-    cursor: tronque ? lignes[lignes.length - 1].seq : seqCourante(),
+    cursor,
     events: lignes.map(versClient),
+    categories: cats,
     more: tronque,
     total: compteEvents.get(calId).c,
     calendrier: calId,
     role,
-    ecrits, rejetes
+    ecrits, rejetes, catsEcrites
   };
 }, { auth: true });
 
@@ -383,16 +419,20 @@ on('GET', '/api/export', (req, res) => {
   const nom = (proprio ? proprio.pseudo : 'export').replace(/[^\w.-]/g, '_');
   res.setHeader('Content-Disposition', `attachment; filename="calendrier-${nom}.json"`);
   return {
-    app: 'calendrier', version: 1,
+    app: 'calendrier', version: 2,
     exportedAt: new Date().toISOString(),
     calendrier: { id: calId, pseudo: proprio ? proprio.pseudo : null },
+    cats: toutesCats.all(calId).map(catVersClient),
     events: tousEvents.all(calId).map(versClient)
   };
 }, { auth: true });
 
 /* ═════════════════ Validation ═════════════════ */
 
-const CATS = ['perso', 'travail', 'rappel', 'autre'];
+// Les catégories sont désormais définies par l'utilisateur : on ne valide
+// plus qu'un identifiant sûr, pas une liste fermée.
+const RE_CAT_ID = /^[A-Za-z0-9_-]{1,64}$/;
+const RE_COULEUR = /^#[0-9a-fA-F]{6}$/;
 const REPEATS = ['none', 'daily', 'weekly', 'monthly', 'yearly'];
 const RE_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const RE_HEURE = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -424,7 +464,7 @@ function valider(b, userId) {
     all_day: allDay,
     start_time: !allDay && RE_HEURE.test(String(b.startTime)) ? b.startTime : null,
     end_time: !allDay && RE_HEURE.test(String(b.endTime)) ? b.endTime : null,
-    cat: CATS.includes(b.cat) ? b.cat : 'perso',
+    cat: RE_CAT_ID.test(String(b.cat)) ? b.cat : 'perso',
     important: b.important ? 1 : 0,
     done: b.done ? 1 : 0,
     repeat: REPEATS.includes(b.repeat) ? b.repeat : 'none',
@@ -433,6 +473,31 @@ function valider(b, userId) {
     updated_at: Number.isFinite(b.updatedAt) ? Math.floor(b.updatedAt) : Date.now(),
     deleted: b.deleted ? 1 : 0,
     seq: 0
+  };
+}
+
+/** Nettoie une catégorie reçue du client. Renvoie null si inexploitable. */
+function validerCat(b, calendrierId) {
+  if (!b || typeof b !== 'object') return null;
+  if (typeof b.id !== 'string' || !RE_CAT_ID.test(b.id)) return null;
+
+  return {
+    calendrier_id: calendrierId,
+    id: b.id,
+    label: txt(b.label, 40) || 'Sans nom',
+    color: RE_COULEUR.test(String(b.color)) ? b.color : '#94A3B8',
+    ordre: Number.isFinite(b.ordre) ? Math.max(0, Math.min(999, Math.floor(b.ordre))) : 0,
+    created_at: Number.isFinite(b.createdAt) ? Math.floor(b.createdAt) : Date.now(),
+    updated_at: Number.isFinite(b.updatedAt) ? Math.floor(b.updatedAt) : Date.now(),
+    deleted: b.deleted ? 1 : 0,
+    seq: 0
+  };
+}
+
+function catVersClient(r) {
+  return {
+    id: r.id, label: r.label, color: r.color, ordre: r.ordre,
+    createdAt: r.created_at, updatedAt: r.updated_at, deleted: r.deleted
   };
 }
 

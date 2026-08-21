@@ -94,16 +94,52 @@
     }
   };
 
-  /* ─────────── Catégories ─────────── */
-  var CATS = [
-    { id: 'perso',   label: 'Personnel', color: '#8B7CF6' },
-    { id: 'travail', label: 'Travail',   color: '#22D3EE' },
-    { id: 'rappel',  label: 'Rappel',    color: '#FBBF24' },
-    { id: 'autre',   label: 'Autre',     color: '#94A3B8' }
+  /* ─────────── Catégories ───────────
+     Modifiables par l'utilisateur et synchronisées comme les événements :
+     une catégorie appartient au calendrier, donc tous ceux qui le partagent
+     voient les mêmes. CATS est mutée sur place — jamais remplacée — pour que
+     les références gardées ailleurs restent valides. */
+
+  var COULEURS = [
+    '#8B7CF6', '#22D3EE', '#34D399', '#FBBF24',
+    '#FB7185', '#F97316', '#A3E635', '#38BDF8',
+    '#E879F9', '#94A3B8'
   ];
+
+  function catsDefaut() {
+    return [
+      { id: 'perso',   label: 'Personnel', color: '#8B7CF6', ordre: 0 },
+      { id: 'travail', label: 'Travail',   color: '#22D3EE', ordre: 1 },
+      { id: 'rappel',  label: 'Rappel',    color: '#FBBF24', ordre: 2 },
+      { id: 'autre',   label: 'Autre',     color: '#94A3B8', ordre: 3 }
+    ].map(function (c) {
+      c.createdAt = 0; c.updatedAt = 0; c.deleted = 0;
+      return c;
+    });
+  }
+
+  var CATS = [];        // catégories vivantes, triées
+  var CATS_TOUTES = {}; // id -> catégorie, y compris supprimées (pierres tombales)
+
+  /** Reconstruit CATS à partir de CATS_TOUTES */
+  function reconstruireCats() {
+    var vivantes = [];
+    for (var id in CATS_TOUTES) {
+      if (!CATS_TOUTES[id].deleted) vivantes.push(CATS_TOUTES[id]);
+    }
+    vivantes.sort(function (a, b) {
+      return (a.ordre - b.ordre) || a.label.localeCompare(b.label, 'fr');
+    });
+    CATS.length = 0;
+    for (var i = 0; i < vivantes.length; i++) CATS.push(vivantes[i]);
+  }
+
+  /** Catégorie par id. Une catégorie supprimée reste affichable, en grisé. */
   function cat(id) {
-    for (var i = 0; i < CATS.length; i++) if (CATS[i].id === id) return CATS[i];
-    return CATS[0];
+    var c = CATS_TOUTES[id];
+    if (c && !c.deleted) return c;
+    if (c) return { id: c.id, label: c.label + ' (supprimée)', color: '#94A3B8', ordre: 999 };
+    return CATS[0] || { id: 'perso', label: 'Sans catégorie', color: '#94A3B8', ordre: 0 };
   }
 
   /* ─────────── Identifiants ─────────── */
@@ -141,28 +177,128 @@
       Store.events = {};
       Store.lastSync = 0;
       Store.cursor = 0;
+      CATS_TOUTES = {};
+
+      var data = null;
       try {
         var raw = localStorage.getItem(Store._lsKey());
-        if (!raw) return;
-        var data = JSON.parse(raw);
-        Store.events = data.events || {};
-        Store.lastSync = data.lastSync || 0;
-        Store.cursor = data.cursor || 0;
+        if (raw) data = JSON.parse(raw);
       } catch (e) {
         console.warn('Lecture du stockage impossible :', e);
       }
+
+      if (data) {
+        Store.events = data.events || {};
+        Store.lastSync = data.lastSync || 0;
+        Store.cursor = data.cursor || 0;
+        var liste = data.cats || [];
+        for (var i = 0; i < liste.length; i++) {
+          var c = normaliseCat(liste[i]);
+          if (c) CATS_TOUTES[c.id] = c;
+        }
+      }
+
+      // Premier usage de ce calendrier : on installe les catégories de base
+      var vide = true;
+      for (var k in CATS_TOUTES) { vide = false; break; }
+      if (vide) {
+        var def = catsDefaut();
+        for (var j = 0; j < def.length; j++) CATS_TOUTES[def[j].id] = def[j];
+      }
+      reconstruireCats();
     },
 
     save: function () {
       try {
+        var cats = [];
+        for (var id in CATS_TOUTES) cats.push(CATS_TOUTES[id]);
         localStorage.setItem(Store._lsKey(), JSON.stringify({
-          v: 1, events: Store.events, lastSync: Store.lastSync, cursor: Store.cursor
+          v: 2, events: Store.events, cats: cats,
+          lastSync: Store.lastSync, cursor: Store.cursor
         }));
         return true;
       } catch (e) {
         console.error('Écriture impossible :', e);
         return false;
       }
+    },
+
+    /* ── Catégories ── */
+    COULEURS: COULEURS,
+
+    /** Crée ou modifie une catégorie. Renvoie la catégorie normalisée. */
+    upsertCat: function (c) {
+      var now = Date.now();
+      var prev = c.id ? CATS_TOUTES[c.id] : null;
+      var e = {
+        id: c.id || uid(),
+        label: (c.label || '').trim().slice(0, 40) || 'Sans nom',
+        color: /^#[0-9a-f]{6}$/i.test(c.color) ? c.color : COULEURS[0],
+        ordre: Number.isFinite(c.ordre) ? c.ordre : (prev ? prev.ordre : CATS.length),
+        createdAt: (prev && prev.createdAt) || now,
+        updatedAt: now,
+        deleted: 0
+      };
+      CATS_TOUTES[e.id] = e;
+      reconstruireCats();
+      Store.save();
+      return e;
+    },
+
+    /** Supprime une catégorie et bascule ses événements vers `versId` */
+    removeCat: function (id, versId) {
+      var c = CATS_TOUTES[id];
+      if (!c || c.deleted) return 0;
+      if (CATS.length <= 1) return -1;          // on garde toujours une catégorie
+
+      var repli = versId && CATS_TOUTES[versId] && !CATS_TOUTES[versId].deleted
+        ? versId
+        : (CATS.find(function (x) { return x.id !== id; }) || {}).id;
+
+      var deplaces = 0, now = Date.now();
+      for (var eid in Store.events) {
+        var ev = Store.events[eid];
+        if (ev.cat === id && !ev.deleted) {
+          ev.cat = repli;
+          ev.updatedAt = now;
+          deplaces++;
+        }
+      }
+      c.deleted = 1;
+      c.updatedAt = now;
+      reconstruireCats();
+      Store.save();
+      return deplaces;
+    },
+
+    /** Nombre d'événements vivants utilisant cette catégorie */
+    compteCat: function (id) {
+      var n = 0;
+      for (var eid in Store.events) {
+        if (!Store.events[eid].deleted && Store.events[eid].cat === id) n++;
+      }
+      return n;
+    },
+
+    catsChangesSince: function (since) {
+      var out = [];
+      for (var id in CATS_TOUTES) {
+        if (CATS_TOUTES[id].updatedAt > (since || 0)) out.push(CATS_TOUTES[id]);
+      }
+      return out;
+    },
+
+    /** Fusionne les catégories du serveur — la plus récente gagne */
+    applyRemoteCats: function (distantes) {
+      var n = 0;
+      for (var i = 0; i < distantes.length; i++) {
+        var r = normaliseCat(distantes[i]);
+        if (!r) continue;
+        var local = CATS_TOUTES[r.id];
+        if (!local || r.updatedAt > local.updatedAt) { CATS_TOUTES[r.id] = r; n++; }
+      }
+      if (n) { reconstruireCats(); Store.save(); }
+      return n;
     },
 
     /* ── Lecture ── */
@@ -348,8 +484,9 @@
     /* ═════ Import / export ═════ */
     exportData: function () {
       return {
-        app: 'calendrier', version: 1,
+        app: 'calendrier', version: 2,
         exportedAt: new Date().toISOString(),
+        cats: CATS.slice(),
         events: Store.all()
       };
     },
@@ -358,6 +495,19 @@
     importData: function (data) {
       var list = (data && data.events) || [];
       if (!Array.isArray(list)) throw new Error('Format de fichier invalide');
+
+      // Les catégories d'abord, sinon les événements importés pointeraient
+      // vers des catégories inconnues.
+      if (Array.isArray(data.cats)) {
+        for (var c = 0; c < data.cats.length; c++) {
+          var cc = normaliseCat(data.cats[c]);
+          if (!cc) continue;
+          var cur = CATS_TOUTES[cc.id];
+          if (!cur || cc.updatedAt >= cur.updatedAt) CATS_TOUTES[cc.id] = cc;
+        }
+        reconstruireCats();
+      }
+
       var n = 0;
       for (var i = 0; i < list.length; i++) {
         var e = normalise(list[i]);
@@ -372,6 +522,10 @@
     /** Purge complète de l'espace courant */
     clear: function () {
       Store.events = {}; Store.lastSync = 0; Store.cursor = 0;
+      CATS_TOUTES = {};
+      var def = catsDefaut();
+      for (var i = 0; i < def.length; i++) CATS_TOUTES[def[i].id] = def[i];
+      reconstruireCats();
       try { localStorage.removeItem(Store._lsKey()); } catch (e) {}
     },
 
@@ -396,6 +550,19 @@
   };
 
   /* ─────────── Internes ─────────── */
+
+  function normaliseCat(r) {
+    if (!r || typeof r.id !== 'string' || !r.id) return null;
+    return {
+      id: r.id,
+      label: String(r.label || 'Sans nom').slice(0, 40),
+      color: /^#[0-9a-f]{6}$/i.test(r.color) ? r.color : COULEURS[0],
+      ordre: Number.isFinite(r.ordre) ? r.ordre : 0,
+      createdAt: r.createdAt || 0,
+      updatedAt: r.updatedAt || 0,
+      deleted: r.deleted ? 1 : 0
+    };
+  }
 
   function normalise(r) {
     return {

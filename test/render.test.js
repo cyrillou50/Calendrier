@@ -43,7 +43,7 @@ Store.upsert({title:'Rappel & co',date:'2026-08-20',allDay:true,cat:'rappel',imp
 Store.upsert({title:'Vacances',date:'2026-08-18',endDate:'2026-08-24',allDay:true,cat:'autre'});
 Store.upsert({title:'Hebdo',date:'2026-08-03',startTime:'09:00',repeat:'weekly',cat:'perso'});
 
-Cal.ancre='2026-08-20'; Cal.selection='2026-08-20'; Cal.miniAncre='2026-08-20';
+Cal.ancre='2026-08-20'; Cal.selection='2026-08-20';
 
 console.log('── Rendu des vues ──');
 for(const vue of ['month','week','day','agenda']){
@@ -86,14 +86,12 @@ vrai('chevauchement : colonnes partagées', larg.includes(50));
 Cal.vue='day'; Cal.render();
 vrai('jour : 1 colonne', (boites['[data-view-day]'].innerHTML.match(/class="tgrid__col/g)||[]).length===1);
 
-console.log('\n── Agenda, mini-calendrier, panneaux ──');
+console.log('\n── Agenda et panneaux ──');
 Cal.vue='agenda'; Cal.render();
 const ag=boites['[data-view-agenda]'].innerHTML;
 vrai('agenda : une ligne par occurrence', ag.includes('acard'));
 vrai('agenda : multi-jours annoncé', ag.includes('jusqu'));
-vrai('mini : 42 jours', (boites['[data-minical]'].innerHTML.match(/class="minical__day/g)||[]).length===42);
-vrai('mini : marqueur événement', boites['[data-minical]'].innerHTML.includes('has-ev'));
-vrai('catégories : 4 entrées', (boites['[data-cats]'].innerHTML.match(/data-cat=/g)||[]).length===4);
+vrai('categories : 4 par defaut', (boites['[data-cats]'].innerHTML.match(/data-cat=/g)||[]).length===4);
 vrai('à venir : rempli ou vide proprement', boites['[data-upnext]'].innerHTML.length>10);
 
 console.log('\n── Filtres ──');
