@@ -6,6 +6,13 @@
 (function (global) {
   'use strict';
 
+  /* ─────────────────────────────────────────────────────────
+     Adresse de l'API utilisée quand l'utilisateur n'en a saisi
+     aucune. Modifie cette ligne si tu changes de serveur.
+     Laisse la chaîne vide pour exiger une saisie manuelle.
+     ───────────────────────────────────────────────────────── */
+  var SERVEUR_DEFAUT = 'https://api-c.code-eternal.fr';
+
   var K_BASE  = 'calendrier:server';
   var K_TOKEN = 'calendrier:token';
   var K_USER  = 'calendrier:user';
@@ -25,7 +32,9 @@
 
     /* ── Configuration ── */
     load: function () {
-      Api.base = ls(K_BASE) || '';
+      // Une adresse enregistrée par l'utilisateur prime toujours
+      // sur celle inscrite dans le code.
+      Api.base = ls(K_BASE) || SERVEUR_DEFAUT;
       Api.token = ls(K_TOKEN) || '';
       try { Api.user = JSON.parse(ls(K_USER) || 'null'); } catch (e) { Api.user = null; }
       return Api;

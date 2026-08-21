@@ -128,14 +128,14 @@
     ecran.querySelector('#loginForm').addEventListener('submit', function (e) {
       e.preventDefault();
       var f = e.target;
-      soumettre(f, Api.login(f.email.value.trim(), f.password.value), 'Connexion…');
+      soumettre(f, Api.login(f.elements.email.value.trim(), f.elements.password.value), 'Connexion…');
     });
 
     ecran.querySelector('#registerForm').addEventListener('submit', function (e) {
       e.preventDefault();
       var f = e.target;
-      if (f.password.value.length < 8) return erreurForm(f, 'Le mot de passe doit faire au moins 8 caractères.');
-      soumettre(f, Api.register(f.name.value.trim(), f.email.value.trim(), f.password.value), 'Création…');
+      if (f.elements.password.value.length < 8) return erreurForm(f, 'Le mot de passe doit faire au moins 8 caractères.');
+      soumettre(f, Api.register(f.elements.name.value.trim(), f.elements.email.value.trim(), f.elements.password.value), 'Création…');
     });
   }
 
@@ -344,6 +344,7 @@
       case 'sync':   return synchroniser(false);
       case 'delete-event':  return supprimerEvenement();
       case 'logout': return deconnexion(false);
+      case 'signin': return retourConnexion();
       case 'save-server':   return enregistrerServeur();
       case 'test-server':   return testerServeur();
       case 'export':        return exporterJson();
@@ -413,14 +414,14 @@
       enregistrerEvenement(form);
     });
 
-    form.allDay.addEventListener('change', function () {
-      document.querySelector('[data-times]').hidden = form.allDay.checked;
+    form.elements.allDay.addEventListener('change', function () {
+      document.querySelector('[data-times]').hidden = form.elements.allDay.checked;
     });
 
     // Ajuste l'heure de fin quand on change l'heure de début
-    form.startTime.addEventListener('change', function () {
-      if (!form.endTime.value || D.mins(form.endTime.value) <= D.mins(form.startTime.value)) {
-        form.endTime.value = D.hhmm(Math.min(23 * 60 + 59, D.mins(form.startTime.value) + 60));
+    form.elements.startTime.addEventListener('change', function () {
+      if (!form.elements.endTime.value || D.mins(form.elements.endTime.value) <= D.mins(form.elements.startTime.value)) {
+        form.elements.endTime.value = D.hhmm(Math.min(23 * 60 + 59, D.mins(form.elements.startTime.value) + 60));
       }
     });
 
@@ -484,18 +485,18 @@
     if (ancienneNote) ancienneNote.remove();
 
     if (ev) {
-      form.id.value = ev.id;
-      form.title.value = ev.title;
-      form.date.value = ev.date;
-      form.endDate.value = ev.endDate || '';
-      form.allDay.checked = ev.allDay;
-      form.startTime.value = ev.startTime || '09:00';
-      form.endTime.value = ev.endTime || '';
-      form.repeat.value = ev.repeat || 'none';
-      form.location.value = ev.location || '';
-      form.notes.value = ev.notes || '';
-      form.important.checked = ev.important;
-      form.done.checked = ev.done;
+      form.elements.id.value = ev.id;
+      form.elements.title.value = ev.title;
+      form.elements.date.value = ev.date;
+      form.elements.endDate.value = ev.endDate || '';
+      form.elements.allDay.checked = ev.allDay;
+      form.elements.startTime.value = ev.startTime || '09:00';
+      form.elements.endTime.value = ev.endTime || '';
+      form.elements.repeat.value = ev.repeat || 'none';
+      form.elements.location.value = ev.location || '';
+      form.elements.notes.value = ev.notes || '';
+      form.elements.important.checked = ev.important;
+      form.elements.done.checked = ev.done;
       choisirCat(ev.cat);
 
       if (ev.repeat && ev.repeat !== 'none' && ymd && ymd !== ev.date) {
@@ -509,17 +510,17 @@
         Icons.render(note);
       }
     } else {
-      form.id.value = '';
-      form.date.value = ymd || D.today();
-      form.startTime.value = heure || prochainCreneau();
-      form.endTime.value = D.hhmm(Math.min(23 * 60 + 59, D.mins(form.startTime.value) + 60));
-      form.repeat.value = 'none';
+      form.elements.id.value = '';
+      form.elements.date.value = ymd || D.today();
+      form.elements.startTime.value = heure || prochainCreneau();
+      form.elements.endTime.value = D.hhmm(Math.min(23 * 60 + 59, D.mins(form.elements.startTime.value) + 60));
+      form.elements.repeat.value = 'none';
       choisirCat('perso');
     }
 
-    document.querySelector('[data-times]').hidden = form.allDay.checked;
+    document.querySelector('[data-times]').hidden = form.elements.allDay.checked;
     UI.open('eventModal');
-    setTimeout(function () { form.title.focus(); }, 80);
+    setTimeout(function () { form.elements.title.focus(); }, 80);
   }
 
   function prochainCreneau() {
@@ -529,33 +530,33 @@
   }
 
   function enregistrerEvenement(form) {
-    if (!form.title.value.trim()) {
-      form.title.focus();
+    if (!form.elements.title.value.trim()) {
+      form.elements.title.focus();
       return UI.err('Donne un titre à ton événement.');
     }
-    if (!form.date.value) {
+    if (!form.elements.date.value) {
       return UI.err('Choisis une date.');
     }
 
-    var nouveau = !form.id.value;
+    var nouveau = !form.elements.id.value;
     Store.upsert({
-      id: form.id.value || null,
-      title: form.title.value,
-      date: form.date.value,
-      endDate: form.endDate.value || null,
-      allDay: form.allDay.checked,
-      startTime: form.startTime.value,
-      endTime: form.endTime.value,
+      id: form.elements.id.value || null,
+      title: form.elements.title.value,
+      date: form.elements.date.value,
+      endDate: form.elements.endDate.value || null,
+      allDay: form.elements.allDay.checked,
+      startTime: form.elements.startTime.value,
+      endTime: form.elements.endTime.value,
       cat: form.dataset.cat || 'perso',
-      repeat: form.repeat.value,
-      location: form.location.value,
-      notes: form.notes.value,
-      important: form.important.checked,
-      done: form.done.checked
+      repeat: form.elements.repeat.value,
+      location: form.elements.location.value,
+      notes: form.elements.notes.value,
+      important: form.elements.important.checked,
+      done: form.elements.done.checked
     });
 
     UI.close('eventModal');
-    Cal.selection = form.date.value;
+    Cal.selection = form.elements.date.value;
     Cal.render();
     UI.ok(nouveau ? 'Événement ajouté' : 'Modifications enregistrées');
     planifierSync();
@@ -563,7 +564,7 @@
 
   function supprimerEvenement() {
     var form = document.getElementById('eventForm');
-    var id = form.id.value;
+    var id = form.elements.id.value;
     if (!id) return;
     var ev = Store.get(id);
     if (!ev) return;
@@ -738,7 +739,10 @@
     }
 
     document.getElementById('serverUrl').value = Api.base || '';
+    // En mode local il n'y a rien à déconnecter : on propose l'inverse,
+    // revenir à l'écran de connexion — sans toucher aux données locales.
     document.querySelector('[data-action="logout"]').hidden = !Api.authed();
+    document.querySelector('[data-action="signin"]').hidden = Api.authed();
 
     var note = document.querySelector('[data-storage-note]');
     if (note) {
@@ -790,6 +794,20 @@
   function majLibelleServeur() {
     var el = document.querySelector('[data-server-label]');
     if (el) el.textContent = Api.base ? Api.base.replace(/^https?:\/\//, '') : 'non configuré';
+  }
+
+  /**
+   * Quitte le mode local pour revenir à l'écran de connexion.
+   * Les événements locaux sont CONSERVÉS : à la première connexion,
+   * l'application proposera de les rattacher au compte.
+   */
+  function retourConnexion() {
+    UI.close('accountModal');
+    try { localStorage.removeItem(K_MODE); } catch (e) {}
+    ouvrirAuth();
+    if (Store.count()) {
+      UI.info('Tes ' + Store.count() + ' événement(s) restent enregistrés sur cet appareil.');
+    }
   }
 
   function deconnexion(force) {
