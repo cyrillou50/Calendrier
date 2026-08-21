@@ -153,6 +153,7 @@
 
   function soumettre(form, promesse, texteAttente) {
     if (!Api.configured()) {
+      promesse.catch(function () {});   // évite une promesse rejetée sans gestionnaire
       erreurForm(form, "Aucun serveur n'est configuré. Renseigne l'adresse de ton VPS, ou continue sans compte.");
       return;
     }
@@ -905,15 +906,77 @@
   /* ═════════════════ GLOBAL ═════════════════ */
   function brancherGlobal() {
     global.addEventListener('error', function (e) {
-      console.error('Erreur :', e.message);
+      console.error('Erreur :', e.message, e.filename, e.lineno);
+      panne('Erreur JavaScript', e.message + '\n' + (e.filename || '') + ' ligne ' + (e.lineno || '?'));
+    });
+    global.addEventListener('unhandledrejection', function (e) {
+      console.error('Promesse rejetée :', e.reason);
     });
   }
 
+  /**
+   * Affiche une panne à l'écran plutôt que de laisser l'application
+   * inerte et silencieuse — cas le plus déroutant pour l'utilisateur.
+   */
+  function panne(titre, detail) {
+    if (document.getElementById('panneBox')) return;   // une seule fois
+    var box = document.createElement('div');
+    box.id = 'panneBox';
+    box.setAttribute('style',
+      'position:fixed;left:0;right:0;top:0;z-index:9999;padding:14px 18px;' +
+      'background:#7f1d1d;color:#fff;font:14px/1.5 system-ui,sans-serif;' +
+      'box-shadow:0 4px 18px rgba(0,0,0,.4)');
+    box.innerHTML =
+      '<b>' + UI.esc(titre) + '</b><br>' +
+      '<span style="font-size:12.5px;opacity:.9;white-space:pre-wrap">' + UI.esc(detail) + '</span>' +
+      '<br><span style="font-size:12px;opacity:.75">Ouvre la console (F12) pour le détail complet.</span>';
+    (document.body || document.documentElement).appendChild(box);
+  }
+
+  /** Vérifie que les six scripts se sont bien chargés, dans l'ordre */
+  function modulesManquants() {
+    var requis = [
+      ['Icons', 'assets/js/icons.js'],
+      ['Store', 'assets/js/store.js'],
+      ['Dates', 'assets/js/store.js'],
+      ['Api',   'assets/js/api.js'],
+      ['UI',    'assets/js/ui.js'],
+      ['Cal',   'assets/js/calendar.js']
+    ];
+    var absents = [];
+    for (var i = 0; i < requis.length; i++) {
+      if (!global[requis[i][0]]) absents.push(requis[i][1]);
+    }
+    return absents;
+  }
+
   /* ─────────── Go ─────────── */
+  function lancer() {
+    var absents = modulesManquants();
+    if (absents.length) {
+      // UI n'est peut-être pas chargé : message minimal, sans dépendance
+      var msg = 'Fichier(s) non chargé(s) : ' + absents.join(', ');
+      console.error(msg);
+      var b = document.createElement('div');
+      b.setAttribute('style', 'position:fixed;inset:0;z-index:9999;padding:40px;' +
+        'background:#7f1d1d;color:#fff;font:15px/1.6 system-ui,sans-serif');
+      b.textContent = 'Calendrier : ' + msg +
+        '. Vérifie que le dossier « assets » est bien présent à côté de index.html.';
+      (document.body || document.documentElement).appendChild(b);
+      return;
+    }
+    try {
+      demarrer();
+    } catch (e) {
+      console.error(e);
+      panne('Le démarrage a échoué', (e && e.message) || String(e));
+    }
+  }
+
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', demarrer);
+    document.addEventListener('DOMContentLoaded', lancer);
   } else {
-    demarrer();
+    lancer();
   }
 
   global.App = App;
